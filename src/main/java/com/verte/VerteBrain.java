@@ -53,13 +53,13 @@ public class VerteBrain {
             try {
                 String content = callApi(userMessage);
                 JsonObject parsed = parseModelJson(content);
-                String reply = parsed.has("reply") && !parsed.get("reply").isJsonNull()
-                        ? parsed.get("reply").getAsString()
-                        : "...";
+                String reply = asText(parsed.get("reply"));
+                if (reply == null || reply.isBlank()) reply = "...";
                 JsonArray commands = parsed.has("commands") && parsed.get("commands").isJsonArray()
                         ? parsed.getAsJsonArray("commands")
                         : new JsonArray();
-                server.execute(() -> deliver(player, reply, commands));
+                final String finalReply = reply;
+                server.execute(() -> deliver(player, finalReply, commands));
             } catch (Exception e) {
                 Verte.LOGGER.error("Verte API error", e);
                 server.execute(() -> player.sendSystemMessage(
@@ -86,7 +86,9 @@ public class VerteBrain {
 
         for (JsonElement el : commands) {
             if (el == null || el.isJsonNull()) continue;
-            String cmd = el.getAsString().trim();
+            String cmd = asText(el);
+            if (cmd == null) continue;
+            cmd = cmd.trim();
             if (cmd.startsWith("/")) cmd = cmd.substring(1);
             if (cmd.isEmpty()) continue;
             try {
@@ -137,8 +139,28 @@ public class VerteBrain {
         }
 
         JsonObject root = GSON.fromJson(resp.body(), JsonObject.class);
-        return root.getAsJsonArray("choices").get(0).getAsJsonObject()
-                .getAsJsonObject("message").get("content").getAsString();
+        if (root == null || !root.has("choices") || !root.get("choices").isJsonArray()
+                || root.getAsJsonArray("choices").size() == 0) {
+            throw new RuntimeException("Unexpected API response: " + resp.body());
+        }
+
+        JsonObject message = root.getAsJsonArray("choices").get(0).getAsJsonObject()
+                .getAsJsonObject("message");
+
+        String content = asText(message.get("content"));
+        if (content == null || content.isBlank()) {
+            content = asText(message.get("reasoning"));
+        }
+        if (content == null || content.isBlank()) {
+            throw new RuntimeException("Model returned empty content: " + resp.body());
+        }
+        return content;
+    }
+
+    private static String asText(JsonElement el) {
+        if (el == null || el.isJsonNull()) return null;
+        if (el.isJsonPrimitive()) return el.getAsString();
+        return el.toString();
     }
 
     private static JsonObject parseModelJson(String content) {
