@@ -1,5 +1,6 @@
 package com.verte.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.verte.entity.VerteEntity;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.MobRenderer;
@@ -11,6 +12,13 @@ public class VerteRenderer extends MobRenderer<VerteEntity, VerteModel> {
 
     public VerteRenderer(EntityRendererProvider.Context context) {
         super(context, new VerteModel(context.bakeLayer(VerteModel.LAYER)), 0.4F);
+    }
+
+    @Override
+    protected void scale(VerteEntity entity, PoseStack poseStack, float partialTickTime) {
+        float s = entity.getStage() >= VerteEntity.STAGE_MONSTER ? 6.0F : 1.0F;
+        poseStack.scale(s, s, s);
+        super.scale(entity, poseStack, partialTickTime);
     }
 
     @Override
