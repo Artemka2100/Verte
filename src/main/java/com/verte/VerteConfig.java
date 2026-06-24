@@ -26,7 +26,7 @@ public class VerteConfig {
 
         MODEL = b
                 .comment("Model name to use on that endpoint.")
-                .define("model", "llama-3.3-70b-versatile");
+                .define("model", "openai/gpt-oss-120b");
 
         b.pop();
         SPEC = b.build();
