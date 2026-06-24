@@ -14,6 +14,8 @@ Horror mod for Minecraft **Forge 1.20.1**. Inside your world lives **Verte** —
 
 - `apiKey` — key for the OpenAI-compatible endpoint.
 - `apiUrl` — endpoint URL (defaults to Groq).
-- `model` — model name (defaults to `llama-3.3-70b-versatile`).
+- `model` — model name (defaults to `openai/gpt-oss-120b`).
+
+> Never commit your real API key to the repo. Keep it only in your local `config/verte-common.toml` or the `VERTE_API_KEY` environment variable.
 
 > For singleplayer and private worlds with friends only.
