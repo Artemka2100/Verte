@@ -271,3 +271,13 @@ public class VerteEntity extends PathfinderMob {
 
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
+        super.readAdditionalSaveData(tag);
+        this.anger = tag.getInt("VerteAnger");
+        this.angerDay = tag.contains("VerteAngerDay") ? tag.getLong("VerteAngerDay") : -1L;
+        this.sleeps = tag.getInt("VerteSleeps");
+        if (tag.hasUUID("VerteOwner")) {
+            this.ownerUUID = tag.getUUID("VerteOwner");
+        }
+        this.setStage(tag.getInt("VerteStage"));
+    }
+}
