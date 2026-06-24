@@ -33,6 +33,7 @@ public class VerteEvents {
         if (verte != null) {
             Vec3 spawn = player.position().add(player.getLookAngle().scale(2.0D));
             verte.moveTo(spawn.x, spawn.y, spawn.z, player.getYRot() + 180.0F, 0.0F);
+            verte.setOwnerUUID(player.getUUID());
             level.addFreshEntity(verte);
         }
 
