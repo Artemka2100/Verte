@@ -42,13 +42,13 @@ public class VerteCommand {
         }
         String message = StringArgumentType.getString(ctx, "message");
         int stage = applyMood(player, message);
-        VerteBrain.handle(player, moodTag(stage) + "\n" + message);
+        VerteBrain.handle(player, message, stage);
         return 1;
     }
 
     private int applyMood(ServerPlayer player, String message) {
         ServerLevel level = player.serverLevel();
-        List<VerteEntity> nearby = level.getEntitiesOfClass(VerteEntity.class, player.getBoundingBox().inflate(96.0D));
+        List<VerteEntity> nearby = level.getEntitiesOfClass(VerteEntity.class, player.getBoundingBox().inflate(256.0D));
         if (nearby.isEmpty()) {
             return VerteEntity.STAGE_KIND;
         }
@@ -67,15 +67,5 @@ public class VerteCommand {
             }
         }
         return false;
-    }
-
-    private String moodTag(int stage) {
-        if (stage >= VerteEntity.STAGE_MONSTER) {
-            return "[\u0420\u0415\u0416\u0418\u041c: \u041c\u041e\u041d\u0421\u0422\u0420. \u0422\u044b \u043e\u0433\u0440\u043e\u043c\u043d\u044b\u0439 \u043c\u043e\u043d\u0441\u0442\u0440, \u043e\u0445\u043e\u0442\u0438\u0448\u044c\u0441\u044f \u043d\u0430 \u0438\u0433\u0440\u043e\u043a\u0430. \u041f\u0443\u0433\u0430\u0439 \u0438 \u0443\u0433\u0440\u043e\u0436\u0430\u0439.]";
-        }
-        if (stage >= VerteEntity.STAGE_ANGRY) {
-            return "[\u0420\u0415\u0416\u0418\u041c: \u0417\u041b\u041e\u0419. \u0413\u0440\u0443\u0431\u0438 \u0438 \u043c\u0430\u0442\u0435\u0440\u0438\u0441\u044c.]";
-        }
-        return "[\u0420\u0415\u0416\u0418\u041c: \u0414\u041e\u0411\u0420\u042b\u0419. \u0418\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u0439 \u043f\u0440\u043e\u0448\u043b\u044b\u0435 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438 \u043e \u0433\u0440\u0443\u0431\u043e\u0441\u0442\u0438. \u0411\u0443\u0434\u044c \u0432\u0435\u0436\u043b\u0438\u0432\u044b\u043c \u0438 \u043d\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0441\u044c.]";
     }
 }
