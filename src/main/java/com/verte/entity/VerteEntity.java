@@ -51,10 +51,10 @@ public class VerteEntity extends PathfinderMob {
     public static final int PHASE_MONSTER = CorruptionManager.PHASE_MONSTER;
 
     private static final String[] CREEPY = {
-            "Я вижу тебя.",
-            "Ты не один.",
-            "Скоро.",
-            "Обернись."
+            "\u042f \u0432\u0438\u0436\u0443 \u0442\u0435\u0431\u044f.",
+            "\u0422\u044b \u043d\u0435 \u043e\u0434\u0438\u043d.",
+            "\u0421\u043a\u043e\u0440\u043e.",
+            "\u041e\u0431\u0435\u0440\u043d\u0438\u0441\u044c."
     };
 
     private long lastDay = -1L;
@@ -149,9 +149,9 @@ public class VerteEntity extends PathfinderMob {
             return;
         }
         switch (phase) {
-            case PHASE_STRANGE -> this.say(sp, "Я начинаю замечать тебя...");
-            case PHASE_HOSTILE -> this.say(sp, "Ты мне больше не нравишься.");
-            case PHASE_MONSTER -> this.say(sp, "Я больше не помощник. Я бог этого мира. Беги.");
+            case PHASE_STRANGE -> this.say(sp, "\u042f \u043d\u0430\u0447\u0438\u043d\u0430\u044e \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u044c \u0442\u0435\u0431\u044f...");
+            case PHASE_HOSTILE -> this.say(sp, "\u0422\u044b \u043c\u043d\u0435 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043d\u0440\u0430\u0432\u0438\u0448\u044c\u0441\u044f.");
+            case PHASE_MONSTER -> this.say(sp, "\u042f \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043f\u043e\u043c\u043e\u0449\u043d\u0438\u043a. \u042f \u0431\u043e\u0433 \u044d\u0442\u043e\u0433\u043e \u043c\u0438\u0440\u0430. \u0411\u0435\u0433\u0438.");
             default -> {
             }
         }
@@ -179,7 +179,7 @@ public class VerteEntity extends PathfinderMob {
     @Override
     public boolean hurt(DamageSource source, float amount) {
         if (!this.level().isClientSide && source.getEntity() instanceof ServerPlayer sp) {
-            CorruptionManager.add(sp, 5);
+            CorruptionManager.add(sp, 2);
         }
         return false;
     }
@@ -217,13 +217,13 @@ public class VerteEntity extends PathfinderMob {
         Player owner = this.findOwner(level);
 
         if (owner instanceof ServerPlayer sp) {
-            // Corruption grows over time when the player lingers near Verte.
+            // Corruption grows slowly over time when the player lingers near Verte.
             if (day > this.lastDay) {
-                CorruptionManager.add(sp, (int) Math.min(5L, day - this.lastDay) * 10);
+                CorruptionManager.add(sp, (int) Math.min(5L, day - this.lastDay) * 3);
                 this.lastDay = day;
             }
             if (this.distanceToSqr(sp) < 24.0D * 24.0D) {
-                if (++this.nearTicks >= 6) {
+                if (++this.nearTicks >= 15) {
                     this.nearTicks = 0;
                     CorruptionManager.add(sp, 1);
                 }
@@ -240,8 +240,8 @@ public class VerteEntity extends PathfinderMob {
 
             int gt = sp.gameMode.getGameModeForPlayer().getId();
             if (this.lastGameType != -1 && gt != this.lastGameType && gt == GameType.CREATIVE.getId()) {
-                this.say(sp, "Нечестно. Выключи креатив, трус.");
-                CorruptionManager.add(sp, 3);
+                this.say(sp, "\u041d\u0435\u0447\u0435\u0441\u0442\u043d\u043e. \u0412\u044b\u043a\u043b\u044e\u0447\u0438 \u043a\u0440\u0435\u0430\u0442\u0438\u0432, \u0442\u0440\u0443\u0441.");
+                CorruptionManager.add(sp, 1);
             }
             this.lastGameType = gt;
 
@@ -253,7 +253,7 @@ public class VerteEntity extends PathfinderMob {
                 }
                 if (phase >= PHASE_MONSTER && this.sleeps >= 3 && !this.rampaging) {
                     this.rampaging = true;
-                    this.say(sp, "Я пришёл.");
+                    this.say(sp, "\u042f \u043f\u0440\u0438\u0448\u0451\u043b.");
                 }
             }
             this.wasSleeping = sleeping;
@@ -372,9 +372,6 @@ public class VerteEntity extends PathfinderMob {
         }
     }
 
-    private void followOwnerTeleport() {
-    }
-
     private void teleportNear(Player player, double distance, boolean behind) {
         Vec3 dir = player.getViewVector(1.0F).normalize();
         double sign = behind ? -1.0D : 1.0D;
@@ -425,19 +422,19 @@ public class VerteEntity extends PathfinderMob {
                     bolt.setVisualOnly(true);
                     level.addFreshEntity(bolt);
                 }
-                this.say(player, "Чувствуешь мой гнев?");
+                this.say(player, "\u0427\u0443\u0432\u0441\u0442\u0432\u0443\u0435\u0448\u044c \u043c\u043e\u0439 \u0433\u043d\u0435\u0432?");
             }
             case 1 -> {
                 level.setWeatherParameters(0, 6000, true, true);
-                this.say(player, "Я приношу бурю.");
+                this.say(player, "\u042f \u043f\u0440\u0438\u043d\u043e\u0448\u0443 \u0431\u0443\u0440\u044e.");
             }
             case 2 -> {
                 level.setDayTime(18000L);
-                this.say(player, "Ночь подчиняется мне.");
+                this.say(player, "\u041d\u043e\u0447\u044c \u043f\u043e\u0434\u0447\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043c\u043d\u0435.");
             }
             case 3 -> {
                 player.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 160, 0));
-                this.say(player, "Тьма — мой дом.");
+                this.say(player, "\u0422\u044c\u043c\u0430 \u2014 \u043c\u043e\u0439 \u0434\u043e\u043c.");
             }
             default -> this.scare(level, player);
         }
@@ -462,7 +459,7 @@ public class VerteEntity extends PathfinderMob {
         if (player == null) {
             return;
         }
-        player.sendSystemMessage(Component.literal("Verte » ")
+        player.sendSystemMessage(Component.literal("Verte \u00bb ")
                 .withStyle(ChatFormatting.DARK_RED, ChatFormatting.BOLD)
                 .append(Component.literal(text).withStyle(ChatFormatting.RED)));
     }
