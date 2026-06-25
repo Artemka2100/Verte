@@ -3,6 +3,7 @@ package com.verte;
 import com.mojang.logging.LogUtils;
 import com.verte.entity.ModEntities;
 import com.verte.entity.VerteEntity;
+import com.verte.net.VerteNetwork;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
@@ -26,6 +27,7 @@ public class Verte {
         modBus.addListener(this::registerAttributes);
         modBus.addListener(this::addCreative);
 
+        VerteNetwork.register();
         MinecraftForge.EVENT_BUS.register(new VerteCommand());
         MinecraftForge.EVENT_BUS.register(new VerteEvents());
         MinecraftForge.EVENT_BUS.register(new VerteChatHandler());
