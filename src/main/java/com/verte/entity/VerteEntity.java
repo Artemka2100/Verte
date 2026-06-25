@@ -52,6 +52,8 @@ public class VerteEntity extends PathfinderMob {
             SynchedEntityData.defineId(VerteEntity.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> DATA_BIG =
             SynchedEntityData.defineId(VerteEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_WAVING =
+            SynchedEntityData.defineId(VerteEntity.class, EntityDataSerializers.BOOLEAN);
 
     public static final int PHASE_FRIENDLY = CorruptionManager.PHASE_FRIENDLY;
     public static final int PHASE_STRANGE = CorruptionManager.PHASE_STRANGE;
@@ -63,11 +65,12 @@ public class VerteEntity extends PathfinderMob {
     private static final int TASK_COME = 2;
     private static final int TASK_CHOP = 3;
 
-    private static final String[] CREEPY = {
-            "\u042f \u0432\u0438\u0436\u0443 \u0442\u0435\u0431\u044f.",
-            "\u0422\u044b \u043d\u0435 \u043e\u0434\u0438\u043d.",
-            "\u0421\u043a\u043e\u0440\u043e.",
-            "\u041e\u0431\u0435\u0440\u043d\u0438\u0441\u044c."
+    private static final String[] HUMAN = {
+            "\u0447\u0451 \u0434\u0435\u043b\u0430\u0435\u0448\u044c?",
+            "\u043e\u0433\u043e, \u043d\u0435\u043f\u043b\u043e\u0445\u043e \u0442\u0443\u0442.",
+            "\u044f \u043d\u0435\u043c\u043d\u043e\u0433\u043e \u043f\u0440\u043e\u0433\u043e\u043b\u043e\u0434\u0430\u043b\u0441\u044f.",
+            "\u043f\u043e\u0441\u0442\u0440\u043e\u0438\u043c \u0447\u0442\u043e-\u043d\u0438\u0431\u0443\u0434\u044c?",
+            "\u043a\u0440\u0430\u0441\u0438\u0432\u043e \u0437\u0434\u0435\u0441\u044c."
     };
 
     private long lastDay = -1L;
@@ -83,6 +86,8 @@ public class VerteEntity extends PathfinderMob {
     private BlockPos taskTarget;
     private int vanishUntil = -1;
     private int emergeTicks;
+    private int waveUntil = -1;
+    private int sayingUntil = -1;
     private int peekUntil = -1;
     private BlockPos peekPos;
     private boolean peekArmed;
@@ -99,7 +104,7 @@ public class VerteEntity extends PathfinderMob {
     public static AttributeSupplier.Builder createAttributes() {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.45D)
+                .add(Attributes.MOVEMENT_SPEED, 0.30D)
                 .add(Attributes.FOLLOW_RANGE, 256.0D);
     }
 
@@ -108,11 +113,12 @@ public class VerteEntity extends PathfinderMob {
         super.defineSynchedData();
         this.entityData.define(DATA_PHASE, 0);
         this.entityData.define(DATA_BIG, false);
+        this.entityData.define(DATA_WAVING, false);
     }
 
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(1, new FollowPlayerGoal(this, 1.25D, 2.5F, 6.0F));
+        this.goalSelector.addGoal(1, new FollowPlayerGoal(this, 1.15D, 2.5F, 6.0F));
         this.goalSelector.addGoal(2, new LookAtPlayerGoal(this, Player.class, 16.0F));
         this.goalSelector.addGoal(3, new RandomLookAroundGoal(this));
     }
@@ -132,6 +138,10 @@ public class VerteEntity extends PathfinderMob {
         }
     }
 
+    public boolean isWaving() {
+        return this.entityData.get(DATA_WAVING);
+    }
+
     public void setOwnerUUID(UUID uuid) {
         this.ownerUUID = uuid;
     }
@@ -147,7 +157,15 @@ public class VerteEntity extends PathfinderMob {
 
     public void startEmerge() {
         this.emergeTicks = 30;
+        this.entityData.set(DATA_WAVING, true);
         this.setNoAi(true);
+    }
+
+    /** Show a line of text floating above Verte for a few seconds (mirrors chat). */
+    public void displaySpeech(String text) {
+        this.setCustomName(Component.literal(text));
+        this.setCustomNameVisible(true);
+        this.sayingUntil = this.tickCount + 120;
     }
 
     private void applyPhase(int phase) {
@@ -161,7 +179,7 @@ public class VerteEntity extends PathfinderMob {
                 this.setHealth(this.getMaxHealth());
             }
             if (spd != null) {
-                spd.setBaseValue(0.55D);
+                spd.setBaseValue(0.34D);
             }
         } else {
             if (!this.stalking) {
@@ -171,7 +189,7 @@ public class VerteEntity extends PathfinderMob {
                 hp.setBaseValue(20.0D);
             }
             if (spd != null) {
-                spd.setBaseValue(0.45D);
+                spd.setBaseValue(0.30D);
             }
         }
         this.refreshDimensions();
@@ -224,9 +242,7 @@ public class VerteEntity extends PathfinderMob {
 
     @Override
     public boolean hurt(DamageSource source, float amount) {
-        if (!this.level().isClientSide && source.getEntity() instanceof ServerPlayer sp) {
-            CorruptionManager.add(sp, 2);
-        }
+        // Verte is calm: hits never anger him and never raise corruption.
         return false;
     }
 
@@ -252,14 +268,25 @@ public class VerteEntity extends PathfinderMob {
             return;
         }
 
-        // Climbing out of the box.
+        // Revert the floating speech back to his name after a few seconds.
+        if (this.sayingUntil > 0 && this.tickCount >= this.sayingUntil) {
+            this.setCustomName(Component.literal("verte"));
+            this.sayingUntil = -1;
+        }
+
+        // Climbing out of the box, then a friendly wave.
         if (this.emergeTicks > 0) {
             this.emergeTicks--;
             level.sendParticles(ParticleTypes.CLOUD, this.getX(), this.getY() + 0.3D, this.getZ(), 6, 0.3D, 0.2D, 0.3D, 0.01D);
             if (this.emergeTicks == 0) {
                 this.setNoAi(false);
+                this.waveUntil = this.tickCount + 50;
+                this.speakAsPlayer("\u043f\u0440\u0438\u0432\u0435\u0442! :)");
             }
             return;
+        }
+        if (this.isWaving() && this.tickCount >= this.waveUntil) {
+            this.entityData.set(DATA_WAVING, false);
         }
 
         // Vanish/reappear cycle after being spotted while stalking.
@@ -286,12 +313,13 @@ public class VerteEntity extends PathfinderMob {
         Player owner = this.findOwner(level);
 
         if (owner instanceof ServerPlayer sp) {
+            // Corruption now rises slowly so phase changes take a long time.
             if (day > this.lastDay) {
-                CorruptionManager.add(sp, (int) Math.min(5L, day - this.lastDay) * 3);
+                CorruptionManager.add(sp, (int) Math.min(3L, day - this.lastDay));
                 this.lastDay = day;
             }
             if (this.distanceToSqr(sp) < 24.0D * 24.0D) {
-                if (++this.nearTicks >= 15) {
+                if (++this.nearTicks >= 60) {
                     this.nearTicks = 0;
                     CorruptionManager.add(sp, 1);
                 }
@@ -315,10 +343,15 @@ public class VerteEntity extends PathfinderMob {
                 HomeManager.setPending(sp, true);
             }
 
+            // A bit more human: idle small talk while still calm.
+            if (phase < PHASE_HOSTILE && this.task == TASK_NONE && !this.stalking
+                    && this.random.nextInt(120) == 0) {
+                this.speakAsPlayer(HUMAN[this.random.nextInt(HUMAN.length)]);
+            }
+
             int gt = sp.gameMode.getGameModeForPlayer().getId();
             if (this.lastGameType != -1 && gt != this.lastGameType && gt == GameType.CREATIVE.getId()) {
                 this.speakAsPlayer(phase >= PHASE_HOSTILE ? "\u043a\u0440\u0435\u0430\u0442\u0438\u0432? \u0442\u0440\u0443\u0441." : "\u044d\u0439, \u044d\u0442\u043e \u043d\u0435\u0447\u0435\u0441\u0442\u043d\u043e :(");
-                CorruptionManager.add(sp, 1);
             }
             this.lastGameType = gt;
 
@@ -350,7 +383,7 @@ public class VerteEntity extends PathfinderMob {
                 this.obstruct(level, sp);
             }
             if (phase >= PHASE_MONSTER && !this.isPeeking()) {
-                // Huge phase: silent relentless pursuit, very few messages or effects.
+                // Huge phase: silent relentless pursuit. He RUNS (fast), not teleports.
                 this.chase(level, sp);
                 if (this.random.nextInt(12) == 0) {
                     this.scareSilent(level, sp);
@@ -578,7 +611,6 @@ public class VerteEntity extends PathfinderMob {
                     level.playSound(null, sp.blockPosition(), SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE, 0.6F, 0.4F);
                 }
             } else {
-                // Already peeking through a window: hold the stare, then vanish.
                 if (this.peekUntil > 0) {
                     this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
                     if (this.tickCount >= this.peekUntil) {
@@ -589,7 +621,6 @@ public class VerteEntity extends PathfinderMob {
                     }
                     return;
                 }
-                // Positioned at a window, waiting for the player to look away.
                 if (this.peekArmed && this.peekPos != null) {
                     this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
                     if (!this.playerSees(sp)) {
@@ -605,7 +636,6 @@ public class VerteEntity extends PathfinderMob {
                     }
                     return;
                 }
-                // Try to set up a window peek if we know where the player lives.
                 if (phase >= PHASE_HOSTILE && this.random.nextInt(3) == 0) {
                     BlockPos window = this.findWindowNearHome(level, sp);
                     if (window != null) {
@@ -618,7 +648,6 @@ public class VerteEntity extends PathfinderMob {
                         return;
                     }
                 }
-                // Default stalk: stare, reposition, vanish if spotted.
                 this.getNavigation().stop();
                 this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
                 if (this.playerSees(sp)) {
@@ -720,13 +749,11 @@ public class VerteEntity extends PathfinderMob {
 
     private void atmosphere(ServerLevel level, ServerPlayer sp, int phase, int corruption) {
         if (phase >= PHASE_MONSTER) {
-            // Huge Verte: almost no noise. The silent presence is the horror.
             if (this.random.nextInt(8) == 0) {
                 AtmosphereManager.ambient(level, sp, phase, this.random);
             }
             return;
         }
-        // Subtle early dread even while Verte is still \"friendly\".
         if (phase < PHASE_STRANGE && corruption >= 12 && this.random.nextInt(40) == 0) {
             AtmosphereManager.ambient(level, sp, phase, this.random);
         }
@@ -756,7 +783,8 @@ public class VerteEntity extends PathfinderMob {
     }
 
     private void chase(ServerLevel level, ServerPlayer sp) {
-        this.getNavigation().moveTo(sp, 1.2D);
+        // He searches by RUNNING fast, not by teleporting.
+        this.getNavigation().moveTo(sp, 1.5D);
         this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
         if (this.distanceToSqr(sp) < 6.0D * 6.0D) {
             sp.hurt(this.damageSources().mobAttack(this), 4.0F);
@@ -796,7 +824,7 @@ public class VerteEntity extends PathfinderMob {
         if (r == 0) {
             level.playSound(null, player.blockPosition(), SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE, 1.0F, 0.7F);
         } else if (r == 1) {
-            this.say(player, CREEPY[this.random.nextInt(CREEPY.length)]);
+            this.speakAsPlayer("\u044f \u0432\u0438\u0436\u0443 \u0442\u0435\u0431\u044f.");
         } else if (r == 2) {
             level.playSound(null, player.blockPosition(), SoundEvents.ENDERMAN_SCREAM, SoundSource.HOSTILE, 0.8F, 0.5F);
         } else {
@@ -814,27 +842,15 @@ public class VerteEntity extends PathfinderMob {
                     bolt.setVisualOnly(true);
                     level.addFreshEntity(bolt);
                 }
-                this.say(player, "\u0427\u0443\u0432\u0441\u0442\u0432\u0443\u0435\u0448\u044c \u043c\u043e\u0439 \u0433\u043d\u0435\u0432?");
-            }
-            case 1 -> {
-                level.setWeatherParameters(0, 6000, true, true);
-                this.say(player, "\u042f \u043f\u0440\u0438\u043d\u043e\u0448\u0443 \u0431\u0443\u0440\u044e.");
-            }
-            case 2 -> {
-                level.setDayTime(18000L);
-                this.say(player, "\u041d\u043e\u0447\u044c \u043f\u043e\u0434\u0447\u0438\u043d\u044f\u0435\u0442\u0441\u044f \u043c\u043d\u0435.");
-            }
-            case 3 -> {
-                player.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 160, 0));
-                this.say(player, "\u0422\u044c\u043c\u0430 \u2014 \u043c\u043e\u0439 \u0434\u043e\u043c.");
             }
             default -> this.scare(level, player);
         }
     }
 
     private void rampage(ServerLevel level, ServerPlayer player) {
-        if (this.distanceToSqr(player) > 48.0D * 48.0D) {
-            this.teleportNear(player, 6.0D, true);
+        // Only teleport if he completely lost the player; otherwise he runs.
+        if (this.distanceToSqr(player) > 80.0D * 80.0D) {
+            this.teleportNear(player, 8.0D, true);
         }
         BlockPos center = player.blockPosition();
         for (int i = 0; i < 16; i++) {
@@ -847,21 +863,12 @@ public class VerteEntity extends PathfinderMob {
         }
     }
 
-    private void say(Player player, String text) {
-        if (player == null) {
-            return;
-        }
-        player.sendSystemMessage(Component.literal("Verte \u00bb ")
-                .withStyle(ChatFormatting.DARK_RED, ChatFormatting.BOLD)
-                .append(Component.literal(text).withStyle(ChatFormatting.RED)));
-    }
-
     private void speakAsPlayer(String text) {
         MinecraftServer server = this.level().getServer();
-        if (server == null) {
-            return;
+        if (server != null) {
+            server.getPlayerList().broadcastSystemMessage(Component.literal("<verte> " + text), false);
         }
-        server.getPlayerList().broadcastSystemMessage(Component.literal("<verte> " + text), false);
+        this.displaySpeech(text);
     }
 
     @Override
