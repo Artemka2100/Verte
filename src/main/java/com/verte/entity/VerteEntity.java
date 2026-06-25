@@ -2,6 +2,7 @@ package com.verte.entity;
 
 import com.verte.AtmosphereManager;
 import com.verte.CorruptionManager;
+import com.verte.StoryManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -65,6 +66,7 @@ public class VerteEntity extends PathfinderMob {
     private int lastGameType = -1;
     private int nearTicks;
     private int currentPhase = -1;
+    private int storyStep;
     private UUID ownerUUID;
 
     public VerteEntity(EntityType<? extends PathfinderMob> type, Level level) {
@@ -238,6 +240,9 @@ public class VerteEntity extends PathfinderMob {
                 this.announcePhase(sp, phase, prev);
             }
 
+            // Reveal the story gradually \u2014 one beat at a time as corruption rises.
+            this.storyStep = StoryManager.progress(level, sp, corruption, this.storyStep);
+
             int gt = sp.gameMode.getGameModeForPlayer().getId();
             if (this.lastGameType != -1 && gt != this.lastGameType && gt == GameType.CREATIVE.getId()) {
                 this.say(sp, "\u041d\u0435\u0447\u0435\u0441\u0442\u043d\u043e. \u0412\u044b\u043a\u043b\u044e\u0447\u0438 \u043a\u0440\u0435\u0430\u0442\u0438\u0432, \u0442\u0440\u0443\u0441.");
@@ -264,7 +269,7 @@ public class VerteEntity extends PathfinderMob {
                 this.followOwner(sp, phase);
             }
 
-            this.atmosphere(level, sp, phase);
+            this.atmosphere(level, sp, phase, corruption);
 
             if (phase == PHASE_STRANGE && this.random.nextInt(30) == 0) {
                 this.teleportNear(sp, 18.0D + this.random.nextInt(8), true);
@@ -340,14 +345,22 @@ public class VerteEntity extends PathfinderMob {
         }
     }
 
-    private void atmosphere(ServerLevel level, ServerPlayer sp, int phase) {
-        if (phase >= PHASE_STRANGE && this.random.nextInt(Math.max(2, 7 - phase * 2)) == 0) {
+    private void atmosphere(ServerLevel level, ServerPlayer sp, int phase, int corruption) {
+        // Subtle early dread even while Verte is still \"friendly\".
+        if (phase < PHASE_STRANGE && corruption >= 12 && this.random.nextInt(40) == 0) {
             AtmosphereManager.ambient(level, sp, phase, this.random);
         }
-        if (phase >= PHASE_HOSTILE && this.random.nextInt(12 - phase * 2) == 0) {
+        // Whispers grow more frequent and effects more intense as corruption climbs.
+        int ambientChance = Math.max(2, 10 - corruption / 12);
+        if (phase >= PHASE_STRANGE && this.random.nextInt(ambientChance) == 0) {
+            AtmosphereManager.ambient(level, sp, phase, this.random);
+        }
+        int distortChance = Math.max(3, 14 - corruption / 8);
+        if (phase >= PHASE_HOSTILE && this.random.nextInt(distortChance) == 0) {
             AtmosphereManager.distort(sp, phase, this.random);
         }
-        if (phase >= PHASE_STRANGE && this.random.nextInt(20) == 0) {
+        int wallChance = Math.max(6, 26 - corruption / 5);
+        if (phase >= PHASE_STRANGE && this.random.nextInt(wallChance) == 0) {
             AtmosphereManager.fourthWall(sp, this.random);
         }
     }
@@ -470,6 +483,7 @@ public class VerteEntity extends PathfinderMob {
         tag.putInt("VertePhase", this.getPhase());
         tag.putLong("VerteLastDay", this.lastDay);
         tag.putInt("VerteSleeps", this.sleeps);
+        tag.putInt("VerteStory", this.storyStep);
         tag.putBoolean("VerteRampaging", this.rampaging);
         if (this.ownerUUID != null) {
             tag.putUUID("VerteOwner", this.ownerUUID);
@@ -481,6 +495,7 @@ public class VerteEntity extends PathfinderMob {
         super.readAdditionalSaveData(tag);
         this.lastDay = tag.contains("VerteLastDay") ? tag.getLong("VerteLastDay") : -1L;
         this.sleeps = tag.getInt("VerteSleeps");
+        this.storyStep = tag.getInt("VerteStory");
         this.rampaging = tag.getBoolean("VerteRampaging");
         if (tag.hasUUID("VerteOwner")) {
             this.ownerUUID = tag.getUUID("VerteOwner");
