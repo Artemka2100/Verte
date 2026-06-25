@@ -25,8 +25,10 @@ public class VerteRenderer extends MobRenderer<VerteEntity, VerteModel> {
 
     @Override
     protected void scale(VerteEntity entity, PoseStack poseStack, float partialTickTime) {
-        float s = entity.isBig() ? 6.0F : 1.0F;
-        poseStack.scale(s, s, s);
+        if (entity.isBig()) {
+            // Huge phase: a tall, thin, unnaturally stretched figure — just unsettling.
+            poseStack.scale(1.4F, 5.0F, 1.4F);
+        }
         super.scale(entity, poseStack, partialTickTime);
     }
 
