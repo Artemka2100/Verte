@@ -25,8 +25,15 @@ public class FollowPlayerGoal extends Goal {
         this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
     }
 
+    private boolean busy() {
+        return this.mob instanceof VerteEntity verte && verte.isBusy();
+    }
+
     @Override
     public boolean canUse() {
+        if (this.busy()) {
+            return false;
+        }
         Player nearest = this.mob.level().getNearestPlayer(this.mob, 64.0D);
         if (nearest == null || nearest.isSpectator()) {
             return false;
@@ -40,6 +47,9 @@ public class FollowPlayerGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
+        if (this.busy()) {
+            return false;
+        }
         if (this.navigation.isDone()) {
             return false;
         }
