@@ -21,7 +21,7 @@ import net.minecraft.world.phys.Vec3;
 public class AtmosphereManager {
 
     private static final SoundEvent[] WHISPERS = {
-            SoundEvents.AMBIENT_CAVE,
+            SoundEvents.AMBIENT_CAVE.value(),
             SoundEvents.ENDERMAN_AMBIENT,
             SoundEvents.SCULK_SHRIEKER_SHRIEK,
             SoundEvents.WARDEN_HEARTBEAT
