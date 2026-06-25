@@ -1,4 +1,6 @@
 {
   "key.categories.verte": "Verte",
-  "key.verte.talk": "Talk to Verte"
+  "key.verte.talk": "Talk to Verte",
+  "item.verte.verte_box": "Verte Box",
+  "entity.verte.verte": "verte"
 }
