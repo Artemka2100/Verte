@@ -2,17 +2,13 @@ package com.verte;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
-import com.verte.entity.VerteEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-
-import java.util.List;
 
 public class VerteCommand {
 
@@ -41,22 +37,11 @@ public class VerteCommand {
             return 0;
         }
         String message = StringArgumentType.getString(ctx, "message");
-        int stage = applyMood(player, message);
-        VerteBrain.handle(player, message, stage);
+        // Talking feeds the corruption; swearing accelerates it.
+        int corruption = CorruptionManager.add(player, isProfane(message) ? 8 : 2);
+        int phase = CorruptionManager.phaseOf(corruption);
+        VerteBrain.handle(player, message, phase);
         return 1;
-    }
-
-    private int applyMood(ServerPlayer player, String message) {
-        ServerLevel level = player.serverLevel();
-        List<VerteEntity> nearby = level.getEntitiesOfClass(VerteEntity.class, player.getBoundingBox().inflate(256.0D));
-        if (nearby.isEmpty()) {
-            return VerteEntity.STAGE_KIND;
-        }
-        VerteEntity verte = nearby.get(0);
-        if (isProfane(message)) {
-            verte.provoke(2, level.getDayTime() / 24000L);
-        }
-        return verte.getStage();
     }
 
     private boolean isProfane(String message) {
