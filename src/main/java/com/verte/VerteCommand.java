@@ -37,8 +37,8 @@ public class VerteCommand {
             return 0;
         }
         String message = StringArgumentType.getString(ctx, "message");
-        // Talking feeds the corruption; swearing accelerates it.
-        int corruption = CorruptionManager.add(player, isProfane(message) ? 8 : 2);
+        // Talking feeds the corruption slowly; swearing accelerates it a bit.
+        int corruption = CorruptionManager.add(player, isProfane(message) ? 3 : 1);
         int phase = CorruptionManager.phaseOf(corruption);
         VerteBrain.handle(player, message, phase);
         return 1;
