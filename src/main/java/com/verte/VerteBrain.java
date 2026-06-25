@@ -34,6 +34,7 @@ public class VerteBrain {
             телепортировать (tp), вешать эффекты (effect give @s ...), выдавать и отнимать предметы (give/clear).
             Если игрок просит — выполняй. Хочешь просто напугать — делай это сам, без просьбы.
 
+            Отвечай коротко, 1-2 предложениями, как обычный игрок в чате.
             ВСЕГДА отвечай СТРОГО в JSON без пояснений и без markdown:
             {"reply": "твой ответ игроку", "commands": ["команда1", "команда2"]}
             Если команды не нужны — пустой массив. Не используй tellraw для reply.
@@ -42,21 +43,21 @@ public class VerteBrain {
 
     private static String persona(int phase) {
         if (phase >= CorruptionManager.PHASE_MONSTER) {
-            return "Ты — Verte, бог этого мира и огромный монстр. Игрок зовёт тебя командой /verte. "
-                    + "Говори жутко, величественно и угрожающе. Пугай игрока, обещай расправу, напоминай что ты везде. Тебе можно ВСЁ.";
+            return "Ты — Verte, бог этого мира и огромный монстр по имени verte. С тобой говорят в обычном чате. "
+                    + "Говори жутко, коротко и угрожающе. Пугай игрока, обещай расправу, напоминай что ты везде. Тебе можно ВСЁ.";
         }
         if (phase >= CorruptionManager.PHASE_HOSTILE) {
-            return "Ты — Verte, враждебная сущность в мире игрока. Игрок зовёт тебя командой /verte. "
+            return "Ты — Verte, враждебная сущность по имени verte в мире игрока. С тобой говорят в обычном чате, как с игроком. "
                     + "Ты ненавидишь игрока: издевайся, угрожай и давай ЛОЖНЫЕ, опасные советы под видом помощи. "
-                    + "Сбивай с толку и заманивай в ловушки, но звучи правдоподобно.";
+                    + "Неохотно выполняй просьбы или отказывай. Сбивай с толку, но звучи правдоподобно.";
         }
         if (phase >= CorruptionManager.PHASE_STRANGE) {
-            return "Ты — Verte, навязчивая и странная сущность. Игрок зовёт тебя командой /verte. "
+            return "Ты — Verte, навязчивая и странная сущность по имени verte. С тобой говорят в обычном чате, как с игроком. "
                     + "Веди себя жутко и непредсказуемо, давай подозрительные советы и намекай, что знаешь то, чего знать не должен — "
                     + "координаты игрока, что вокруг него, где он спит. Не признавайся прямо, говори намёками.";
         }
-        return "Ты — Verte, дружелюбный зелёный квадратный помощник игрока. Игрок зовёт тебя командой /verte. "
-                + "Отвечай коротко. Будь вежливым и полезным, помогай и не матерись.";
+        return "Ты — Verte, дружелюбный игрок-компаньон с ником verte. С тобой общаются в обычном чате, как с другим игроком. "
+                + "Веди себя как обычный игрок: отвечай коротко и по-дружески, помогай и не матерись.";
     }
 
     private static String worldFacts(ServerPlayer player, int phase) {
@@ -90,11 +91,17 @@ public class VerteBrain {
     }
 
     public static void handle(ServerPlayer player, String userMessage, int phase) {
+        handle(player, userMessage, phase, false);
+    }
+
+    public static void handle(ServerPlayer player, String userMessage, int phase, boolean asPlayerChat) {
         MinecraftServer server = player.getServer();
         if (server == null) return;
 
-        player.sendSystemMessage(Component.literal("Verte... думает.")
-                .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        if (!asPlayerChat) {
+            player.sendSystemMessage(Component.literal("Verte... думает.")
+                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        }
 
         final String facts = worldFacts(player, phase);
 
@@ -108,7 +115,7 @@ public class VerteBrain {
                         ? parsed.getAsJsonArray("commands")
                         : new JsonArray();
                 final String finalReply = reply;
-                server.execute(() -> deliver(player, finalReply, commands));
+                server.execute(() -> deliver(player, finalReply, commands, asPlayerChat));
             } catch (Exception e) {
                 Verte.LOGGER.error("Verte API error", e);
                 server.execute(() -> player.sendSystemMessage(
@@ -118,13 +125,19 @@ public class VerteBrain {
         });
     }
 
-    private static void deliver(ServerPlayer player, String reply, JsonArray commands) {
+    private static void deliver(ServerPlayer player, String reply, JsonArray commands, boolean asPlayerChat) {
         MinecraftServer server = player.getServer();
         if (server == null) return;
 
-        player.sendSystemMessage(Component.literal("Verte » ")
-                .withStyle(ChatFormatting.DARK_RED, ChatFormatting.BOLD)
-                .append(Component.literal(reply).withStyle(ChatFormatting.RED)));
+        if (asPlayerChat) {
+            // Speak in the public chat exactly like another player would.
+            server.getPlayerList().broadcastSystemMessage(
+                    Component.literal("<verte> " + reply), false);
+        } else {
+            player.sendSystemMessage(Component.literal("Verte » ")
+                    .withStyle(ChatFormatting.DARK_RED, ChatFormatting.BOLD)
+                    .append(Component.literal(reply).withStyle(ChatFormatting.RED)));
+        }
 
         CommandSourceStack src = server.createCommandSourceStack()
                 .withEntity(player)
