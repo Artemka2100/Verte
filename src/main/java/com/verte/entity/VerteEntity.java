@@ -2,6 +2,7 @@ package com.verte.entity;
 
 import com.verte.AtmosphereManager;
 import com.verte.CorruptionManager;
+import com.verte.HomeManager;
 import com.verte.ModItems;
 import com.verte.StoryManager;
 import net.minecraft.ChatFormatting;
@@ -41,6 +42,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.Tags;
 
 import java.util.UUID;
 
@@ -81,6 +83,9 @@ public class VerteEntity extends PathfinderMob {
     private BlockPos taskTarget;
     private int vanishUntil = -1;
     private int emergeTicks;
+    private int peekUntil = -1;
+    private BlockPos peekPos;
+    private boolean peekArmed;
     private UUID ownerUUID;
 
     public VerteEntity(EntityType<? extends PathfinderMob> type, Level level) {
@@ -134,6 +139,10 @@ public class VerteEntity extends PathfinderMob {
     /** True while Verte is doing his own thing, so the follow goal should step aside. */
     public boolean isBusy() {
         return this.task != TASK_NONE || this.stalking || this.rampaging || this.getPhase() >= PHASE_MONSTER;
+    }
+
+    private boolean isPeeking() {
+        return this.peekUntil > 0 || this.peekArmed;
     }
 
     public void startEmerge() {
@@ -299,6 +308,13 @@ public class VerteEntity extends PathfinderMob {
 
             this.storyStep = StoryManager.progress(level, sp, corruption, this.storyStep);
 
+            // Verte casually asks where the player lives; a "yes" saves their home.
+            if (phase >= PHASE_STRANGE && !HomeManager.hasHome(sp) && !HomeManager.isPending(sp)
+                    && this.random.nextInt(40) == 0) {
+                this.speakAsPlayer("\u0442\u044b \u0441\u0435\u0439\u0447\u0430\u0441 \u0434\u043e\u043c\u0430?");
+                HomeManager.setPending(sp, true);
+            }
+
             int gt = sp.gameMode.getGameModeForPlayer().getId();
             if (this.lastGameType != -1 && gt != this.lastGameType && gt == GameType.CREATIVE.getId()) {
                 this.speakAsPlayer(phase >= PHASE_HOSTILE ? "\u043a\u0440\u0435\u0430\u0442\u0438\u0432? \u0442\u0440\u0443\u0441." : "\u044d\u0439, \u044d\u0442\u043e \u043d\u0435\u0447\u0435\u0441\u0442\u043d\u043e :(");
@@ -326,14 +342,14 @@ public class VerteEntity extends PathfinderMob {
 
             this.atmosphere(level, sp, phase, corruption);
 
-            if (phase == PHASE_STRANGE && this.task == TASK_NONE && this.random.nextInt(30) == 0) {
+            if (phase == PHASE_STRANGE && this.task == TASK_NONE && !this.stalking && this.random.nextInt(30) == 0) {
                 this.teleportNear(sp, 18.0D + this.random.nextInt(8), true);
                 level.playSound(null, sp.blockPosition(), SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE, 0.6F, 0.5F);
             }
-            if (phase >= PHASE_HOSTILE && this.random.nextInt(15) == 0) {
+            if (phase >= PHASE_HOSTILE && !this.isPeeking() && this.random.nextInt(15) == 0) {
                 this.obstruct(level, sp);
             }
-            if (phase >= PHASE_MONSTER) {
+            if (phase >= PHASE_MONSTER && !this.isPeeking()) {
                 // Huge phase: silent relentless pursuit, very few messages or effects.
                 this.chase(level, sp);
                 if (this.random.nextInt(12) == 0) {
@@ -541,15 +557,12 @@ public class VerteEntity extends PathfinderMob {
         return best;
     }
 
-    // ---- Stalking, vanishing and atmosphere ----
+    // ---- Stalking, window peeking, vanishing and atmosphere ----
 
     private void handleStalking(ServerLevel level, ServerPlayer sp, boolean night, int phase) {
         if (phase < PHASE_STRANGE) {
             if (this.stalking) {
-                this.stalking = false;
-                if (phase < PHASE_MONSTER) {
-                    this.setBig(false);
-                }
+                this.resetStalk(phase);
             }
             return;
         }
@@ -565,21 +578,102 @@ public class VerteEntity extends PathfinderMob {
                     level.playSound(null, sp.blockPosition(), SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE, 0.6F, 0.4F);
                 }
             } else {
+                // Already peeking through a window: hold the stare, then vanish.
+                if (this.peekUntil > 0) {
+                    this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
+                    if (this.tickCount >= this.peekUntil) {
+                        this.peekUntil = -1;
+                        this.peekPos = null;
+                        this.peekArmed = false;
+                        this.vanish(level, sp);
+                    }
+                    return;
+                }
+                // Positioned at a window, waiting for the player to look away.
+                if (this.peekArmed && this.peekPos != null) {
+                    this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
+                    if (!this.playerSees(sp)) {
+                        level.destroyBlock(this.peekPos, false);
+                        this.teleportTo(this.peekPos.getX() + 0.5D, this.peekPos.getY(), this.peekPos.getZ() + 0.5D);
+                        this.getNavigation().stop();
+                        level.playSound(null, this.peekPos, SoundEvents.GLASS_BREAK, SoundSource.HOSTILE, 1.0F, 0.7F);
+                        this.peekUntil = this.tickCount + 40 + this.random.nextInt(21);
+                        this.peekArmed = false;
+                    } else if (this.random.nextInt(8) == 0) {
+                        this.peekArmed = false;
+                        this.peekPos = null;
+                    }
+                    return;
+                }
+                // Try to set up a window peek if we know where the player lives.
+                if (phase >= PHASE_HOSTILE && this.random.nextInt(3) == 0) {
+                    BlockPos window = this.findWindowNearHome(level, sp);
+                    if (window != null) {
+                        this.peekPos = window;
+                        this.peekArmed = true;
+                        BlockPos outside = window.relative(sp.getDirection().getOpposite());
+                        this.teleportTo(outside.getX() + 0.5D, outside.getY(), outside.getZ() + 0.5D);
+                        this.getNavigation().stop();
+                        this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
+                        return;
+                    }
+                }
+                // Default stalk: stare, reposition, vanish if spotted.
                 this.getNavigation().stop();
                 this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
                 if (this.playerSees(sp)) {
-                    // Spotted: puff of clouds, gone for 2-3 seconds, then reappears.
                     this.vanish(level, sp);
                 } else if (this.random.nextInt(6) == 0) {
                     this.teleportNear(sp, 18.0D + this.random.nextInt(8), true);
                 }
             }
         } else if (this.stalking) {
-            this.stalking = false;
-            if (phase < PHASE_MONSTER) {
-                this.setBig(false);
+            this.resetStalk(phase);
+        }
+    }
+
+    private void resetStalk(int phase) {
+        this.stalking = false;
+        this.peekArmed = false;
+        this.peekUntil = -1;
+        this.peekPos = null;
+        if (phase < PHASE_MONSTER) {
+            this.setBig(false);
+        }
+    }
+
+    private BlockPos findWindowNearHome(ServerLevel level, ServerPlayer sp) {
+        if (!HomeManager.hasHome(sp)) {
+            return null;
+        }
+        BlockPos home = HomeManager.getHome(sp);
+        if (home == null) {
+            return null;
+        }
+        BlockPos playerPos = sp.blockPosition();
+        if (playerPos.distSqr(home) > 36.0D * 36.0D) {
+            return null;
+        }
+        BlockPos best = null;
+        double bestD = Double.MAX_VALUE;
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        int r = 8;
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dy = -3; dy <= 4; dy++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    cursor.set(playerPos.getX() + dx, playerPos.getY() + dy, playerPos.getZ() + dz);
+                    BlockState st = level.getBlockState(cursor);
+                    if (st.is(Tags.Blocks.GLASS) || st.is(Tags.Blocks.GLASS_PANES)) {
+                        double d = cursor.distSqr(playerPos);
+                        if (d < bestD) {
+                            bestD = d;
+                            best = cursor.immutable();
+                        }
+                    }
+                }
             }
         }
+        return best;
     }
 
     private void vanish(ServerLevel level, ServerPlayer sp) {
