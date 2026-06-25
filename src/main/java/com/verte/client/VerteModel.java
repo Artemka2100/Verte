@@ -77,10 +77,18 @@ public class VerteModel extends EntityModel<VerteEntity> {
         float idle = Mth.cos(ageInTicks * 0.09F) * 0.05F;
         this.rightArm.zRot = idle + 0.05F;
         this.leftArm.zRot = -idle - 0.05F;
+
+        // Friendly wave: raise the right arm and swing it side to side.
+        if (entity.isWaving()) {
+            this.rightArm.xRot = -2.1F;
+            this.rightArm.yRot = 0.0F;
+            this.rightArm.zRot = -0.5F + Mth.cos(ageInTicks * 0.6F) * 0.45F;
+        }
     }
 
     @Override
     public void renderToBuffer(PoseStack poseStack, VertexConsumer buffer, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
-        this.root.render(poseStack, buffer, packedLight, packedOverlay, 0.13F, 0.85F, 0.25F, 1.0F);
+        // Render with the texture's true colors (so the Steve skin looks normal).
+        this.root.render(poseStack, buffer, packedLight, packedOverlay, red, green, blue, alpha);
     }
 }
