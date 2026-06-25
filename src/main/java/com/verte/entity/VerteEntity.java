@@ -2,18 +2,22 @@ package com.verte.entity;
 
 import com.verte.AtmosphereManager;
 import com.verte.CorruptionManager;
+import com.verte.ModItems;
 import com.verte.StoryManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
@@ -31,6 +35,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -51,6 +56,11 @@ public class VerteEntity extends PathfinderMob {
     public static final int PHASE_HOSTILE = CorruptionManager.PHASE_HOSTILE;
     public static final int PHASE_MONSTER = CorruptionManager.PHASE_MONSTER;
 
+    private static final int TASK_NONE = 0;
+    private static final int TASK_FOLLOW = 1;
+    private static final int TASK_COME = 2;
+    private static final int TASK_CHOP = 3;
+
     private static final String[] CREEPY = {
             "\u042f \u0432\u0438\u0436\u0443 \u0442\u0435\u0431\u044f.",
             "\u0422\u044b \u043d\u0435 \u043e\u0434\u0438\u043d.",
@@ -67,11 +77,15 @@ public class VerteEntity extends PathfinderMob {
     private int nearTicks;
     private int currentPhase = -1;
     private int storyStep;
+    private int task = TASK_NONE;
+    private BlockPos taskTarget;
+    private int vanishUntil = -1;
+    private int emergeTicks;
     private UUID ownerUUID;
 
     public VerteEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
-        this.setCustomName(Component.literal("Verte :)"));
+        this.setCustomName(Component.literal("verte"));
         this.setCustomNameVisible(true);
         this.setPersistenceRequired();
         this.noCulling = true;
@@ -117,6 +131,16 @@ public class VerteEntity extends PathfinderMob {
         this.ownerUUID = uuid;
     }
 
+    /** True while Verte is doing his own thing, so the follow goal should step aside. */
+    public boolean isBusy() {
+        return this.task != TASK_NONE || this.stalking || this.rampaging || this.getPhase() >= PHASE_MONSTER;
+    }
+
+    public void startEmerge() {
+        this.emergeTicks = 30;
+        this.setNoAi(true);
+    }
+
     private void applyPhase(int phase) {
         this.entityData.set(DATA_PHASE, phase);
         AttributeInstance hp = this.getAttribute(Attributes.MAX_HEALTH);
@@ -130,7 +154,6 @@ public class VerteEntity extends PathfinderMob {
             if (spd != null) {
                 spd.setBaseValue(0.55D);
             }
-            this.setCustomName(Component.literal("VERTE"));
         } else {
             if (!this.stalking) {
                 this.setBig(false);
@@ -141,7 +164,6 @@ public class VerteEntity extends PathfinderMob {
             if (spd != null) {
                 spd.setBaseValue(0.45D);
             }
-            this.setCustomName(Component.literal(phase >= PHASE_HOSTILE ? "Verte" : "Verte :)"));
         }
         this.refreshDimensions();
     }
@@ -151,9 +173,9 @@ public class VerteEntity extends PathfinderMob {
             return;
         }
         switch (phase) {
-            case PHASE_STRANGE -> this.say(sp, "\u042f \u043d\u0430\u0447\u0438\u043d\u0430\u044e \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u044c \u0442\u0435\u0431\u044f...");
-            case PHASE_HOSTILE -> this.say(sp, "\u0422\u044b \u043c\u043d\u0435 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043d\u0440\u0430\u0432\u0438\u0448\u044c\u0441\u044f.");
-            case PHASE_MONSTER -> this.say(sp, "\u042f \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043f\u043e\u043c\u043e\u0449\u043d\u0438\u043a. \u042f \u0431\u043e\u0433 \u044d\u0442\u043e\u0433\u043e \u043c\u0438\u0440\u0430. \u0411\u0435\u0433\u0438.");
+            case PHASE_STRANGE -> this.speakAsPlayer("\u044f \u043d\u0430\u0447\u0438\u043d\u0430\u044e \u0442\u0435\u0431\u044f \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u044c...");
+            case PHASE_HOSTILE -> this.speakAsPlayer("\u0442\u044b \u043c\u043d\u0435 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043d\u0440\u0430\u0432\u0438\u0448\u044c\u0441\u044f.");
+            case PHASE_MONSTER -> this.speakAsPlayer("\u044f \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043f\u043e\u043c\u043e\u0449\u043d\u0438\u043a. \u0431\u0435\u0433\u0438.");
             default -> {
             }
         }
@@ -161,19 +183,32 @@ public class VerteEntity extends PathfinderMob {
 
     @Override
     public EntityDimensions getDimensions(Pose pose) {
-        float scale = (this.entityData != null && this.isBig()) ? 6.0F : 1.0F;
-        return super.getDimensions(pose).scale(scale);
+        if (this.entityData != null && this.isBig()) {
+            return EntityDimensions.scalable(1.4F, 7.0F);
+        }
+        return super.getDimensions(pose);
     }
 
     @Override
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
-        if (!this.level().isClientSide && this.getPhase() == PHASE_FRIENDLY) {
-            if (this.isPassenger()) {
-                this.stopRiding();
-            } else {
-                this.startRiding(player, true);
-            }
+        if (this.level().isClientSide) {
             return InteractionResult.SUCCESS;
+        }
+        // Sneak-interact picks Verte back up into a box \u2014 if he still tolerates you.
+        if (player.isShiftKeyDown()) {
+            if (this.getPhase() >= PHASE_HOSTILE) {
+                this.speakAsPlayer(this.getPhase() >= PHASE_MONSTER ? "\u043d\u0435 \u0442\u0440\u043e\u0433\u0430\u0439 \u043c\u0435\u043d\u044f." : "\u0440\u0443\u043a\u0438 \u0443\u0431\u0440\u0430\u043b.");
+                return InteractionResult.CONSUME;
+            }
+            ItemStack box = new ItemStack(ModItems.VERTE_BOX.get());
+            if (!player.addItem(box)) {
+                player.drop(box, false);
+            }
+            if (this.level() instanceof ServerLevel sl) {
+                this.poof(sl, this.position());
+            }
+            this.discard();
+            return InteractionResult.CONSUME;
         }
         return InteractionResult.PASS;
     }
@@ -207,6 +242,29 @@ public class VerteEntity extends PathfinderMob {
         if (this.level().isClientSide || !(this.level() instanceof ServerLevel level)) {
             return;
         }
+
+        // Climbing out of the box.
+        if (this.emergeTicks > 0) {
+            this.emergeTicks--;
+            level.sendParticles(ParticleTypes.CLOUD, this.getX(), this.getY() + 0.3D, this.getZ(), 6, 0.3D, 0.2D, 0.3D, 0.01D);
+            if (this.emergeTicks == 0) {
+                this.setNoAi(false);
+            }
+            return;
+        }
+
+        // Vanish/reappear cycle after being spotted while stalking.
+        if (this.vanishUntil > 0) {
+            if (this.tickCount >= this.vanishUntil) {
+                this.reappear(level);
+            } else {
+                return;
+            }
+        }
+
+        // Tasks run every tick for smooth movement.
+        this.tickTask(level);
+
         if (this.tickCount % 20 != 0) {
             return;
         }
@@ -219,7 +277,6 @@ public class VerteEntity extends PathfinderMob {
         Player owner = this.findOwner(level);
 
         if (owner instanceof ServerPlayer sp) {
-            // Corruption grows slowly over time when the player lingers near Verte.
             if (day > this.lastDay) {
                 CorruptionManager.add(sp, (int) Math.min(5L, day - this.lastDay) * 3);
                 this.lastDay = day;
@@ -240,12 +297,11 @@ public class VerteEntity extends PathfinderMob {
                 this.announcePhase(sp, phase, prev);
             }
 
-            // Reveal the story gradually \u2014 one beat at a time as corruption rises.
             this.storyStep = StoryManager.progress(level, sp, corruption, this.storyStep);
 
             int gt = sp.gameMode.getGameModeForPlayer().getId();
             if (this.lastGameType != -1 && gt != this.lastGameType && gt == GameType.CREATIVE.getId()) {
-                this.say(sp, "\u041d\u0435\u0447\u0435\u0441\u0442\u043d\u043e. \u0412\u044b\u043a\u043b\u044e\u0447\u0438 \u043a\u0440\u0435\u0430\u0442\u0438\u0432, \u0442\u0440\u0443\u0441.");
+                this.speakAsPlayer(phase >= PHASE_HOSTILE ? "\u043a\u0440\u0435\u0430\u0442\u0438\u0432? \u0442\u0440\u0443\u0441." : "\u044d\u0439, \u044d\u0442\u043e \u043d\u0435\u0447\u0435\u0441\u0442\u043d\u043e :(");
                 CorruptionManager.add(sp, 1);
             }
             this.lastGameType = gt;
@@ -258,20 +314,19 @@ public class VerteEntity extends PathfinderMob {
                 }
                 if (phase >= PHASE_MONSTER && this.sleeps >= 3 && !this.rampaging) {
                     this.rampaging = true;
-                    this.say(sp, "\u042f \u043f\u0440\u0438\u0448\u0451\u043b.");
                 }
             }
             this.wasSleeping = sleeping;
 
             this.handleStalking(level, sp, night, phase);
 
-            if (!this.stalking) {
+            if (!this.stalking && this.task == TASK_NONE) {
                 this.followOwner(sp, phase);
             }
 
             this.atmosphere(level, sp, phase, corruption);
 
-            if (phase == PHASE_STRANGE && this.random.nextInt(30) == 0) {
+            if (phase == PHASE_STRANGE && this.task == TASK_NONE && this.random.nextInt(30) == 0) {
                 this.teleportNear(sp, 18.0D + this.random.nextInt(8), true);
                 level.playSound(null, sp.blockPosition(), SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE, 0.6F, 0.5F);
             }
@@ -279,12 +334,11 @@ public class VerteEntity extends PathfinderMob {
                 this.obstruct(level, sp);
             }
             if (phase >= PHASE_MONSTER) {
-                if (this.random.nextInt(3) == 0) {
-                    this.godAct(level, sp);
-                } else {
-                    this.scare(level, sp);
-                }
+                // Huge phase: silent relentless pursuit, very few messages or effects.
                 this.chase(level, sp);
+                if (this.random.nextInt(12) == 0) {
+                    this.scareSilent(level, sp);
+                }
                 if (this.rampaging) {
                     this.rampage(level, sp);
                 }
@@ -294,6 +348,200 @@ public class VerteEntity extends PathfinderMob {
             this.stalking = false;
         }
     }
+
+    // ---- Player-like behaviour: chat commands & tasks ----
+
+    public boolean handleChatCommand(ServerPlayer player, String message, int phase) {
+        String m = message.toLowerCase();
+
+        if (containsAny(m, "\u0441\u0442\u043e\u043f", "\u0441\u0442\u043e\u0439", "\u0445\u0432\u0430\u0442\u0438\u0442", "\u043e\u0442\u043c\u0435\u043d", "stop")) {
+            this.clearTask();
+            this.speakAsPlayer(phase >= PHASE_HOSTILE ? "\u043d\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u0443\u0439 \u043c\u043d\u043e\u0439." : "\u043b\u0430\u0434\u043d\u043e, \u0441\u0442\u043e\u044e.");
+            return true;
+        }
+
+        int intent;
+        if (containsAny(m, "\u0440\u0443\u0431", "\u0434\u0435\u0440\u0435\u0432", "chop", "tree", "wood")) {
+            intent = TASK_CHOP;
+        } else if (containsAny(m, "\u043a\u043e \u043c\u043d\u0435", "\u0438\u0434\u0438 \u0441\u044e\u0434\u0430", "\u043f\u043e\u0434\u043e\u0439\u0434\u0438", "come")) {
+            intent = TASK_COME;
+        } else if (containsAny(m, "\u0441\u043b\u0435\u0434\u0443\u0439", "\u0437\u0430 \u043c\u043d\u043e\u0439", "\u0438\u0434\u0438 \u0437\u0430", "follow")) {
+            intent = TASK_FOLLOW;
+        } else if (containsAny(m, "\u0434\u0440\u0443\u0436", "\u043f\u0440\u0438\u0432\u0435\u0442", "\u0437\u0434\u0430\u0440\u043e\u0432", "\u0445\u0430\u0439", "hello", "friend")) {
+            this.speakAsPlayer(this.greetByPhase(phase));
+            return true;
+        } else {
+            return false;
+        }
+
+        if (!this.willObey(phase)) {
+            this.speakAsPlayer(this.refuseByPhase(phase));
+            return true;
+        }
+
+        this.setOwnerUUID(player.getUUID());
+        switch (intent) {
+            case TASK_CHOP -> this.beginChop(player);
+            case TASK_COME -> {
+                this.task = TASK_COME;
+                this.speakAsPlayer("\u0438\u0434\u0443 \u043a \u0442\u0435\u0431\u0435.");
+            }
+            case TASK_FOLLOW -> {
+                this.task = TASK_FOLLOW;
+                this.speakAsPlayer("\u043e\u043a\u0435\u0439, \u0438\u0434\u0443 \u0437\u0430 \u0442\u043e\u0431\u043e\u0439.");
+            }
+            default -> {
+            }
+        }
+        return true;
+    }
+
+    private boolean willObey(int phase) {
+        if (phase >= PHASE_MONSTER) {
+            return false;
+        }
+        if (phase >= PHASE_HOSTILE) {
+            return this.random.nextInt(4) == 0;
+        }
+        if (phase >= PHASE_STRANGE) {
+            return this.random.nextInt(10) < 7;
+        }
+        return true;
+    }
+
+    private String greetByPhase(int phase) {
+        if (phase >= PHASE_MONSTER) {
+            return "\u043f\u043e\u0437\u0434\u043d\u043e. \u0431\u0435\u0433\u0438.";
+        }
+        if (phase >= PHASE_HOSTILE) {
+            return "\u0434\u0440\u0443\u0436\u0438\u0442\u044c? \u0443\u0436\u0435 \u043f\u043e\u0437\u0434\u043d\u043e.";
+        }
+        if (phase >= PHASE_STRANGE) {
+            return "\u0434\u0440\u0443\u0436\u0438\u0442\u044c? \u0442\u044b \u0432\u0435\u0434\u044c \u043c\u0435\u043d\u044f \u0431\u043e\u0438\u0448\u044c\u0441\u044f.";
+        }
+        return "\u043f\u0440\u0438\u0432\u0435\u0442! \u0434\u0430\u0432\u0430\u0439 \u0434\u0440\u0443\u0436\u0438\u0442\u044c :)";
+    }
+
+    private String refuseByPhase(int phase) {
+        if (phase >= PHASE_HOSTILE) {
+            return "\u0441\u0430\u043c \u0434\u0435\u043b\u0430\u0439.";
+        }
+        return "\u043c\u043e\u0436\u0435\u0442, \u043f\u043e\u0437\u0436\u0435...";
+    }
+
+    private static boolean containsAny(String haystack, String... needles) {
+        for (String n : needles) {
+            if (haystack.contains(n)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void clearTask() {
+        this.task = TASK_NONE;
+        this.taskTarget = null;
+        this.getNavigation().stop();
+    }
+
+    private void beginChop(ServerPlayer player) {
+        if (!(this.level() instanceof ServerLevel level)) {
+            return;
+        }
+        BlockPos log = this.findNearestLog(level, this.blockPosition(), 20);
+        if (log == null) {
+            log = this.findNearestLog(level, player.blockPosition(), 20);
+        }
+        if (log == null) {
+            this.speakAsPlayer("\u043d\u0435 \u0432\u0438\u0436\u0443 \u0434\u0435\u0440\u0435\u0432\u044c\u0435\u0432 \u0440\u044f\u0434\u043e\u043c.");
+            return;
+        }
+        this.taskTarget = log;
+        this.task = TASK_CHOP;
+        this.speakAsPlayer("\u0438\u0434\u0443 \u0440\u0443\u0431\u0438\u0442\u044c \u0434\u0435\u0440\u0435\u0432\u043e!");
+    }
+
+    private void tickTask(ServerLevel level) {
+        if (this.task == TASK_NONE) {
+            return;
+        }
+        Player owner = this.findOwner(level);
+        switch (this.task) {
+            case TASK_FOLLOW -> {
+                if (owner != null) {
+                    if (this.distanceToSqr(owner) > 9.0D) {
+                        this.getNavigation().moveTo(owner, 1.1D);
+                    } else {
+                        this.getNavigation().stop();
+                    }
+                }
+            }
+            case TASK_COME -> {
+                if (owner != null) {
+                    if (this.distanceToSqr(owner) > 6.25D) {
+                        this.getNavigation().moveTo(owner, 1.2D);
+                    } else {
+                        this.clearTask();
+                        this.speakAsPlayer("\u044f \u0442\u0443\u0442.");
+                    }
+                }
+            }
+            case TASK_CHOP -> this.doChop(level);
+            default -> {
+            }
+        }
+    }
+
+    private void doChop(ServerLevel level) {
+        if (this.taskTarget == null || !level.getBlockState(this.taskTarget).is(BlockTags.LOGS)) {
+            BlockPos next = this.findNearestLog(level, this.blockPosition(), 18);
+            if (next == null) {
+                this.clearTask();
+                this.speakAsPlayer("\u0433\u043e\u0442\u043e\u0432\u043e, \u0434\u0435\u0440\u0435\u0432\u043e \u0441\u0440\u0443\u0431\u043b\u0435\u043d\u043e.");
+                return;
+            }
+            this.taskTarget = next;
+        }
+        double cx = this.taskTarget.getX() + 0.5D;
+        double cy = this.taskTarget.getY() + 0.5D;
+        double cz = this.taskTarget.getZ() + 0.5D;
+        if (this.distanceToSqr(cx, cy, cz) > 6.25D) {
+            this.getNavigation().moveTo(cx, cy, cz, 1.15D);
+            this.getLookControl().setLookAt(cx, cy, cz);
+        } else {
+            level.destroyBlock(this.taskTarget, true);
+            BlockPos above = this.taskTarget.above();
+            int guard = 0;
+            while (level.getBlockState(above).is(BlockTags.LOGS) && guard++ < 12) {
+                level.destroyBlock(above, true);
+                above = above.above();
+            }
+            this.taskTarget = null;
+        }
+    }
+
+    private BlockPos findNearestLog(ServerLevel level, BlockPos center, int radius) {
+        BlockPos best = null;
+        double bestD = Double.MAX_VALUE;
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                for (int dy = -6; dy <= 8; dy++) {
+                    cursor.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+                    if (level.getBlockState(cursor).is(BlockTags.LOGS)) {
+                        double d = cursor.distSqr(center);
+                        if (d < bestD) {
+                            bestD = d;
+                            best = cursor.immutable();
+                        }
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    // ---- Stalking, vanishing and atmosphere ----
 
     private void handleStalking(ServerLevel level, ServerPlayer sp, boolean night, int phase) {
         if (phase < PHASE_STRANGE) {
@@ -320,13 +568,8 @@ public class VerteEntity extends PathfinderMob {
                 this.getNavigation().stop();
                 this.getLookControl().setLookAt(sp, 30.0F, 30.0F);
                 if (this.playerSees(sp)) {
-                    level.playSound(null, sp.blockPosition(), SoundEvents.ENDERMAN_SCREAM, SoundSource.HOSTILE, 1.0F, 0.5F);
-                    if (this.random.nextInt(3) == 0) {
-                        this.teleportNear(sp, 2.5D, true);
-                        sp.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 100, 0));
-                    } else {
-                        this.teleportNear(sp, 28.0D, true);
-                    }
+                    // Spotted: puff of clouds, gone for 2-3 seconds, then reappears.
+                    this.vanish(level, sp);
                 } else if (this.random.nextInt(6) == 0) {
                     this.teleportNear(sp, 18.0D + this.random.nextInt(8), true);
                 }
@@ -339,6 +582,42 @@ public class VerteEntity extends PathfinderMob {
         }
     }
 
+    private void vanish(ServerLevel level, ServerPlayer sp) {
+        this.poof(level, this.position());
+        this.getNavigation().stop();
+        this.teleportNear(sp, 40.0D, true);
+        this.setInvisible(true);
+        this.setNoAi(true);
+        this.setSilent(true);
+        this.vanishUntil = this.tickCount + 40 + this.random.nextInt(21);
+    }
+
+    private void reappear(ServerLevel level) {
+        this.vanishUntil = -1;
+        this.setInvisible(false);
+        this.setNoAi(false);
+        this.setSilent(false);
+        Player owner = this.findOwner(level);
+        if (owner != null) {
+            this.teleportNear(owner, 12.0D + this.random.nextInt(6), true);
+        }
+        this.poof(level, this.position());
+    }
+
+    private void poof(ServerLevel level, Vec3 pos) {
+        level.sendParticles(ParticleTypes.CLOUD, pos.x, pos.y + 0.6D, pos.z, 25, 0.35D, 0.5D, 0.35D, 0.02D);
+        level.sendParticles(ParticleTypes.POOF, pos.x, pos.y + 0.6D, pos.z, 18, 0.3D, 0.4D, 0.3D, 0.01D);
+        level.playSound(null, BlockPos.containing(pos.x, pos.y, pos.z), SoundEvents.ENDERMAN_TELEPORT, SoundSource.HOSTILE, 0.7F, 0.7F);
+    }
+
+    private void scareSilent(ServerLevel level, ServerPlayer sp) {
+        if (this.random.nextBoolean()) {
+            level.playSound(null, sp.blockPosition(), SoundEvents.WARDEN_HEARTBEAT, SoundSource.HOSTILE, 1.0F, 0.7F);
+        } else {
+            sp.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 80, 0, false, false));
+        }
+    }
+
     private void followOwner(ServerPlayer sp, int phase) {
         if (this.distanceToSqr(sp) > 28.0D * 28.0D) {
             this.teleportNear(sp, 6.0D, phase >= PHASE_HOSTILE);
@@ -346,11 +625,17 @@ public class VerteEntity extends PathfinderMob {
     }
 
     private void atmosphere(ServerLevel level, ServerPlayer sp, int phase, int corruption) {
+        if (phase >= PHASE_MONSTER) {
+            // Huge Verte: almost no noise. The silent presence is the horror.
+            if (this.random.nextInt(8) == 0) {
+                AtmosphereManager.ambient(level, sp, phase, this.random);
+            }
+            return;
+        }
         // Subtle early dread even while Verte is still \"friendly\".
         if (phase < PHASE_STRANGE && corruption >= 12 && this.random.nextInt(40) == 0) {
             AtmosphereManager.ambient(level, sp, phase, this.random);
         }
-        // Whispers grow more frequent and effects more intense as corruption climbs.
         int ambientChance = Math.max(2, 10 - corruption / 12);
         if (phase >= PHASE_STRANGE && this.random.nextInt(ambientChance) == 0) {
             AtmosphereManager.ambient(level, sp, phase, this.random);
@@ -477,6 +762,14 @@ public class VerteEntity extends PathfinderMob {
                 .append(Component.literal(text).withStyle(ChatFormatting.RED)));
     }
 
+    private void speakAsPlayer(String text) {
+        MinecraftServer server = this.level().getServer();
+        if (server == null) {
+            return;
+        }
+        server.getPlayerList().broadcastSystemMessage(Component.literal("<verte> " + text), false);
+    }
+
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
@@ -484,6 +777,7 @@ public class VerteEntity extends PathfinderMob {
         tag.putLong("VerteLastDay", this.lastDay);
         tag.putInt("VerteSleeps", this.sleeps);
         tag.putInt("VerteStory", this.storyStep);
+        tag.putInt("VerteTask", this.task);
         tag.putBoolean("VerteRampaging", this.rampaging);
         if (this.ownerUUID != null) {
             tag.putUUID("VerteOwner", this.ownerUUID);
@@ -496,6 +790,7 @@ public class VerteEntity extends PathfinderMob {
         this.lastDay = tag.contains("VerteLastDay") ? tag.getLong("VerteLastDay") : -1L;
         this.sleeps = tag.getInt("VerteSleeps");
         this.storyStep = tag.getInt("VerteStory");
+        this.task = tag.getInt("VerteTask");
         this.rampaging = tag.getBoolean("VerteRampaging");
         if (tag.hasUUID("VerteOwner")) {
             this.ownerUUID = tag.getUUID("VerteOwner");
