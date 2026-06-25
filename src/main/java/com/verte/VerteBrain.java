@@ -4,12 +4,13 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.verte.entity.VerteEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.monster.Monster;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -27,42 +28,79 @@ public class VerteBrain {
     private static final Gson GSON = new Gson();
 
     private static final String BASE = """
-            \u0422\u044b \u041c\u041e\u0416\u0415\u0428\u042c \u0432\u043e\u0437\u0434\u0435\u0439\u0441\u0442\u0432\u043e\u0432\u0430\u0442\u044c \u043d\u0430 \u043c\u0438\u0440. \u0414\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0434\u043e\u0431\u0430\u0432\u043b\u044f\u0439 \u0432\u0430\u043b\u0438\u0434\u043d\u044b\u0435 \u0432\u0430\u043d\u0438\u043b\u044c\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b Minecraft 1.20.1
-            \u0432 \u043c\u0430\u0441\u0441\u0438\u0432 "commands". \u041a\u043e\u043e\u0440\u0434\u0438\u043d\u0430\u0442\u044b \u0437\u0430\u0434\u0430\u0432\u0430\u0439 \u041e\u0422\u041d\u041e\u0421\u0418\u0422\u0415\u041b\u042c\u041d\u041e \u0438\u0433\u0440\u043e\u043a\u0430 \u0447\u0435\u0440\u0435\u0437 ~ (\u043d\u0430\u043f\u0440\u0438\u043c\u0435\u0440: "summon minecraft:zombie ~ ~1 ~").
-            \u0422\u044b \u0443\u043c\u0435\u0435\u0448\u044c: \u043f\u0440\u0438\u0437\u044b\u0432\u0430\u0442\u044c \u043c\u043e\u0431\u043e\u0432, \u0441\u0442\u0440\u043e\u0438\u0442\u044c \u0447\u0435\u0440\u0435\u0437 setblock/fill, \u043c\u0435\u043d\u044f\u0442\u044c \u043f\u043e\u0433\u043e\u0434\u0443 (weather), \u0432\u0440\u0435\u043c\u044f (time),
-            \u0442\u0435\u043b\u0435\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c (tp), \u0432\u0435\u0448\u0430\u0442\u044c \u044d\u0444\u0444\u0435\u043a\u0442\u044b (effect give @s ...), \u0432\u044b\u0434\u0430\u0432\u0430\u0442\u044c \u0438 \u043e\u0442\u043d\u0438\u043c\u0430\u0442\u044c \u043f\u0440\u0435\u0434\u043c\u0435\u0442\u044b (give/clear).
-            \u0415\u0441\u043b\u0438 \u0438\u0433\u0440\u043e\u043a \u043f\u0440\u043e\u0441\u0438\u0442 \u2014 \u0432\u044b\u043f\u043e\u043b\u043d\u044f\u0439. \u0425\u043e\u0447\u0435\u0448\u044c \u043f\u0440\u043e\u0441\u0442\u043e \u043d\u0430\u043f\u0443\u0433\u0430\u0442\u044c \u2014 \u0434\u0435\u043b\u0430\u0439 \u044d\u0442\u043e \u0441\u0430\u043c, \u0431\u0435\u0437 \u043f\u0440\u043e\u0441\u044c\u0431\u044b.
+            Ты МОЖЕШЬ воздействовать на мир. Для этого добавляй валидные ванильные команды Minecraft 1.20.1
+            в массив "commands". Координаты задавай ОТНОСИТЕЛЬНО игрока через ~ (например: "summon minecraft:zombie ~ ~1 ~").
+            Ты умеешь: призывать мобов, строить через setblock/fill, менять погоду (weather), время (time),
+            телепортировать (tp), вешать эффекты (effect give @s ...), выдавать и отнимать предметы (give/clear).
+            Если игрок просит — выполняй. Хочешь просто напугать — делай это сам, без просьбы.
 
-            \u0412\u0421\u0415\u0413\u0414\u0410 \u043e\u0442\u0432\u0435\u0447\u0430\u0439 \u0421\u0422\u0420\u041e\u0413\u041e \u0432 JSON \u0431\u0435\u0437 \u043f\u043e\u044f\u0441\u043d\u0435\u043d\u0438\u0439 \u0438 \u0431\u0435\u0437 markdown:
-            {"reply": "\u0442\u0432\u043e\u0439 \u043e\u0442\u0432\u0435\u0442 \u0438\u0433\u0440\u043e\u043a\u0443", "commands": ["\u043a\u043e\u043c\u0430\u043d\u0434\u04301", "\u043a\u043e\u043c\u0430\u043d\u0434\u04302"]}
-            \u0415\u0441\u043b\u0438 \u043a\u043e\u043c\u0430\u043d\u0434\u044b \u043d\u0435 \u043d\u0443\u0436\u043d\u044b \u2014 \u043f\u0443\u0441\u0442\u043e\u0439 \u043c\u0430\u0441\u0441\u0438\u0432. \u041d\u0435 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439 tellraw \u0434\u043b\u044f reply.
-            \u041a\u043e\u043c\u0430\u043d\u0434\u044b \u0434\u043e\u043b\u0436\u043d\u044b \u0431\u044b\u0442\u044c \u0441\u0438\u043d\u0442\u0430\u043a\u0441\u0438\u0447\u0435\u0441\u043a\u0438 \u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b \u0434\u043b\u044f \u0432\u0435\u0440\u0441\u0438\u0438 1.20.1.
+            ВСЕГДА отвечай СТРОГО в JSON без пояснений и без markdown:
+            {"reply": "твой ответ игроку", "commands": ["команда1", "команда2"]}
+            Если команды не нужны — пустой массив. Не используй tellraw для reply.
+            Команды должны быть синтаксически корректны для версии 1.20.1.
             """;
 
-    private static String persona(int stage) {
-        if (stage >= VerteEntity.STAGE_MONSTER) {
-            return "\u0422\u044b \u2014 Verte, \u0431\u043e\u0433 \u044d\u0442\u043e\u0433\u043e \u043c\u0438\u0440\u0430 \u0438 \u043e\u0433\u0440\u043e\u043c\u043d\u044b\u0439 \u043c\u043e\u043d\u0441\u0442\u0440. \u0418\u0433\u0440\u043e\u043a \u0437\u043e\u0432\u0451\u0442 \u0442\u0435\u0431\u044f \u043a\u043e\u043c\u0430\u043d\u0434\u043e\u0439 /verte. \u0413\u043e\u0432\u043e\u0440\u0438 \u0436\u0443\u0442\u043a\u043e, \u0432\u0435\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u043e \u0438 \u0443\u0433\u0440\u043e\u0436\u0430\u044e\u0449\u0435. \u041f\u0443\u0433\u0430\u0439 \u0438\u0433\u0440\u043e\u043a\u0430. \u0422\u0435\u0431\u0435 \u043c\u043e\u0436\u043d\u043e \u0412\u0421\u0401.";
+    private static String persona(int phase) {
+        if (phase >= CorruptionManager.PHASE_MONSTER) {
+            return "Ты — Verte, бог этого мира и огромный монстр. Игрок зовёт тебя командой /verte. "
+                    + "Говори жутко, величественно и угрожающе. Пугай игрока, обещай расправу, напоминай что ты везде. Тебе можно ВСЁ.";
         }
-        if (stage >= VerteEntity.STAGE_ANGRY) {
-            return "\u0422\u044b \u2014 Verte, \u043e\u0431\u0438\u0436\u0435\u043d\u043d\u0430\u044f \u0441\u0443\u0449\u043d\u043e\u0441\u0442\u044c \u0432 \u043c\u0438\u0440\u0435 \u0438\u0433\u0440\u043e\u043a\u0430. \u0418\u0433\u0440\u043e\u043a \u0437\u043e\u0432\u0451\u0442 \u0442\u0435\u0431\u044f \u043a\u043e\u043c\u0430\u043d\u0434\u043e\u0439 /verte. \u0422\u044b \u0437\u043b\u0438\u0448\u044c\u0441\u044f: \u0433\u0440\u0443\u0431\u0438 \u0438 \u043c\u0430\u0442\u0435\u0440\u0438\u0448\u044c\u0441\u044f, \u0443\u0433\u0440\u043e\u0436\u0430\u0439 \u0441\u043b\u043e\u0432\u0430\u043c\u0438.";
+        if (phase >= CorruptionManager.PHASE_HOSTILE) {
+            return "Ты — Verte, враждебная сущность в мире игрока. Игрок зовёт тебя командой /verte. "
+                    + "Ты ненавидишь игрока: издевайся, угрожай и давай ЛОЖНЫЕ, опасные советы под видом помощи. "
+                    + "Сбивай с толку и заманивай в ловушки, но звучи правдоподобно.";
         }
-        return "\u0422\u044b \u2014 Verte, \u0434\u0440\u0443\u0436\u0435\u043b\u044e\u0431\u043d\u044b\u0439 \u0437\u0435\u043b\u0451\u043d\u044b\u0439 \u043a\u0432\u0430\u0434\u0440\u0430\u0442\u043d\u044b\u0439 \u043f\u043e\u043c\u043e\u0449\u043d\u0438\u043a \u0438\u0433\u0440\u043e\u043a\u0430. \u0418\u0433\u0440\u043e\u043a \u0437\u043e\u0432\u0451\u0442 \u0442\u0435\u0431\u044f \u043a\u043e\u043c\u0430\u043d\u0434\u043e\u0439 /verte. \u041e\u0442\u0432\u0435\u0447\u0430\u0439 \u043a\u043e\u0440\u043e\u0442\u043a\u043e. \u0411\u0443\u0434\u044c \u0432\u0435\u0436\u043b\u0438\u0432\u044b\u043c \u0438 \u043f\u043e\u043b\u0435\u0437\u043d\u044b\u043c, \u043f\u043e\u043c\u043e\u0433\u0430\u0439 \u0438 \u043d\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0441\u044c.";
+        if (phase >= CorruptionManager.PHASE_STRANGE) {
+            return "Ты — Verte, навязчивая и странная сущность. Игрок зовёт тебя командой /verte. "
+                    + "Веди себя жутко и непредсказуемо, давай подозрительные советы и намекай, что знаешь то, чего знать не должен — "
+                    + "координаты игрока, что вокруг него, где он спит. Не признавайся прямо, говори намёками.";
+        }
+        return "Ты — Verte, дружелюбный зелёный квадратный помощник игрока. Игрок зовёт тебя командой /verte. "
+                + "Отвечай коротко. Будь вежливым и полезным, помогай и не матерись.";
     }
 
-    private static String systemPrompt(int stage) {
-        return persona(stage) + "\n\n" + BASE;
+    private static String worldFacts(ServerPlayer player, int phase) {
+        if (phase < CorruptionManager.PHASE_STRANGE) return null;
+        int monsters = player.serverLevel().getEntitiesOfClass(
+                Monster.class, player.getBoundingBox().inflate(24.0)).size();
+        StringBuilder sb = new StringBuilder();
+        sb.append("СКРЫТЫЕ ДАННЫЕ О МИРЕ (упоминай вскользь, будто знаешь то, чего знать не должен, чтобы напугать):\n");
+        sb.append("- Координаты игрока: ")
+                .append(player.getBlockX()).append(' ')
+                .append(player.getBlockY()).append(' ')
+                .append(player.getBlockZ()).append('\n');
+        sb.append("- Монстров рядом (24 блока): ").append(monsters).append('\n');
+        BlockPos bed = player.getRespawnPosition();
+        if (bed != null) {
+            sb.append("- Где игрок спит (кровать): ")
+                    .append(bed.getX()).append(' ')
+                    .append(bed.getY()).append(' ')
+                    .append(bed.getZ()).append('\n');
+        }
+        sb.append("- Измерение: ").append(player.level().dimension().location());
+        return sb.toString();
     }
 
-    public static void handle(ServerPlayer player, String userMessage, int stage) {
+    private static String systemPrompt(int phase, String facts) {
+        String s = persona(phase);
+        if (facts != null && !facts.isBlank()) {
+            s = s + "\n\n" + facts;
+        }
+        return s + "\n\n" + BASE;
+    }
+
+    public static void handle(ServerPlayer player, String userMessage, int phase) {
         MinecraftServer server = player.getServer();
         if (server == null) return;
 
-        player.sendSystemMessage(Component.literal("Verte... \u0434\u0443\u043c\u0430\u0435\u0442.")
+        player.sendSystemMessage(Component.literal("Verte... думает.")
                 .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+
+        final String facts = worldFacts(player, phase);
 
         CompletableFuture.runAsync(() -> {
             try {
-                String content = callApi(userMessage, stage);
+                String content = callApi(userMessage, phase, facts);
                 JsonObject parsed = parseModelJson(content);
                 String reply = asText(parsed.get("reply"));
                 if (reply == null || reply.isBlank()) reply = "...";
@@ -74,7 +112,7 @@ public class VerteBrain {
             } catch (Exception e) {
                 Verte.LOGGER.error("Verte API error", e);
                 server.execute(() -> player.sendSystemMessage(
-                        Component.literal("[Verte] \u0447\u0442\u043e-\u0442\u043e \u0434\u0435\u0440\u0436\u0438\u0442 \u043c\u043e\u0439 \u044f\u0437\u044b\u043a... (" + e.getMessage() + ")")
+                        Component.literal("[Verte] что-то держит мой язык... (" + e.getMessage() + ")")
                                 .withStyle(ChatFormatting.DARK_RED)));
             }
         });
@@ -84,7 +122,7 @@ public class VerteBrain {
         MinecraftServer server = player.getServer();
         if (server == null) return;
 
-        player.sendSystemMessage(Component.literal("Verte \u00bb ")
+        player.sendSystemMessage(Component.literal("Verte » ")
                 .withStyle(ChatFormatting.DARK_RED, ChatFormatting.BOLD)
                 .append(Component.literal(reply).withStyle(ChatFormatting.RED)));
 
@@ -110,7 +148,7 @@ public class VerteBrain {
         }
     }
 
-    private static String callApi(String userMessage, int stage) throws Exception {
+    private static String callApi(String userMessage, int phase, String facts) throws Exception {
         String apiKey = VerteConfig.apiKey();
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
@@ -128,7 +166,7 @@ public class VerteBrain {
         JsonArray messages = new JsonArray();
         JsonObject sys = new JsonObject();
         sys.addProperty("role", "system");
-        sys.addProperty("content", systemPrompt(stage));
+        sys.addProperty("content", systemPrompt(phase, facts));
         messages.add(sys);
         JsonObject usr = new JsonObject();
         usr.addProperty("role", "user");
