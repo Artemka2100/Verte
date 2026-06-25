@@ -8,16 +8,13 @@ import net.minecraft.resources.ResourceLocation;
 
 public class VerteRenderer extends MobRenderer<VerteEntity, VerteModel> {
 
-    // Vanilla block textures used as "faces" per corruption phase so the entity
-    // always renders even without custom assets. To use real custom faces, drop
-    // PNGs in src/main/resources/assets/verte/textures/entity/ and point these
-    // ResourceLocations at e.g. new ResourceLocation("verte", "textures/entity/face_0.png").
-    private static final ResourceLocation[] FACES = {
-            new ResourceLocation("minecraft", "textures/block/lime_wool.png"),
-            new ResourceLocation("minecraft", "textures/block/green_wool.png"),
-            new ResourceLocation("minecraft", "textures/block/green_concrete.png"),
-            new ResourceLocation("minecraft", "textures/block/redstone_block.png")
-    };
+    // Verte looks like a normal player: the vanilla wide "Steve" skin. The model's
+    // UV layout matches the classic player skin, so this maps correctly. To use a
+    // custom skin instead, drop a 64x64 PNG in
+    // src/main/resources/assets/verte/textures/entity/verte.png and point this at
+    // new ResourceLocation("verte", "textures/entity/verte.png").
+    private static final ResourceLocation STEVE =
+            new ResourceLocation("minecraft", "textures/entity/player/wide/steve.png");
 
     public VerteRenderer(EntityRendererProvider.Context context) {
         super(context, new VerteModel(context.bakeLayer(VerteModel.LAYER)), 0.4F);
@@ -26,7 +23,7 @@ public class VerteRenderer extends MobRenderer<VerteEntity, VerteModel> {
     @Override
     protected void scale(VerteEntity entity, PoseStack poseStack, float partialTickTime) {
         if (entity.isBig()) {
-            // Huge phase: a tall, thin, unnaturally stretched figure — just unsettling.
+            // Huge phase: a tall, thin, unnaturally stretched figure \u2014 just unsettling.
             poseStack.scale(1.4F, 5.0F, 1.4F);
         }
         super.scale(entity, poseStack, partialTickTime);
@@ -34,9 +31,6 @@ public class VerteRenderer extends MobRenderer<VerteEntity, VerteModel> {
 
     @Override
     public ResourceLocation getTextureLocation(VerteEntity entity) {
-        int phase = entity.getPhase();
-        if (phase < 0) phase = 0;
-        if (phase >= FACES.length) phase = FACES.length - 1;
-        return FACES[phase];
+        return STEVE;
     }
 }
