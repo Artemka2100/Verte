@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.verte.entity.VerteEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
@@ -18,6 +19,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class VerteBrain {
@@ -130,9 +132,15 @@ public class VerteBrain {
         if (server == null) return;
 
         if (asPlayerChat) {
-            // Speak in the public chat exactly like another player would.
+            // Speak in the public chat exactly like another player would, so every
+            // player in the world sees it...
             server.getPlayerList().broadcastSystemMessage(
                     Component.literal("<verte> " + reply), false);
+            // ...and also float the line above Verte's head.
+            VerteEntity verte = nearestVerte(player);
+            if (verte != null) {
+                verte.displaySpeech(reply);
+            }
         } else {
             player.sendSystemMessage(Component.literal("Verte » ")
                     .withStyle(ChatFormatting.DARK_RED, ChatFormatting.BOLD)
@@ -159,6 +167,21 @@ public class VerteBrain {
                 Verte.LOGGER.warn("Verte command failed: {}", cmd, e);
             }
         }
+    }
+
+    private static VerteEntity nearestVerte(ServerPlayer player) {
+        List<VerteEntity> list = player.serverLevel().getEntitiesOfClass(
+                VerteEntity.class, player.getBoundingBox().inflate(96.0D));
+        VerteEntity best = null;
+        double bestD = Double.MAX_VALUE;
+        for (VerteEntity v : list) {
+            double d = v.distanceToSqr(player);
+            if (d < bestD) {
+                bestD = d;
+                best = v;
+            }
+        }
+        return best;
     }
 
     private static String callApi(String userMessage, int phase, String facts) throws Exception {
