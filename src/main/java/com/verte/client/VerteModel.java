@@ -1,94 +1,40 @@
 package com.verte.client;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.verte.Verte;
 import com.verte.entity.VerteEntity;
-import net.minecraft.client.model.EntityModel;
+import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelLayerLocation;
 import net.minecraft.client.model.geom.ModelPart;
-import net.minecraft.client.model.geom.PartPose;
-import net.minecraft.client.model.geom.builders.CubeListBuilder;
+import net.minecraft.client.model.geom.builders.CubeDeformation;
 import net.minecraft.client.model.geom.builders.LayerDefinition;
-import net.minecraft.client.model.geom.builders.MeshDefinition;
-import net.minecraft.client.model.geom.builders.PartDefinition;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 
-public class VerteModel extends EntityModel<VerteEntity> {
+/**
+ * Verte uses the standard humanoid (player) shape so the vanilla Steve skin maps
+ * correctly and so equipped armor + a held sword render through the normal
+ * humanoid layers.
+ */
+public class VerteModel extends HumanoidModel<VerteEntity> {
     public static final ModelLayerLocation LAYER =
             new ModelLayerLocation(new ResourceLocation(Verte.MOD_ID, "verte"), "main");
 
-    private final ModelPart root;
-    private final ModelPart head;
-    private final ModelPart body;
-    private final ModelPart rightArm;
-    private final ModelPart leftArm;
-    private final ModelPart rightLeg;
-    private final ModelPart leftLeg;
-
     public VerteModel(ModelPart root) {
-        this.root = root;
-        this.head = root.getChild("head");
-        this.body = root.getChild("body");
-        this.rightArm = root.getChild("right_arm");
-        this.leftArm = root.getChild("left_arm");
-        this.rightLeg = root.getChild("right_leg");
-        this.leftLeg = root.getChild("left_leg");
+        super(root);
     }
 
     public static LayerDefinition createBodyLayer() {
-        MeshDefinition mesh = new MeshDefinition();
-        PartDefinition root = mesh.getRoot();
-
-        root.addOrReplaceChild("head",
-                CubeListBuilder.create().texOffs(0, 0).addBox(-4.0F, -8.0F, -4.0F, 8.0F, 8.0F, 8.0F),
-                PartPose.offset(0.0F, 0.0F, 0.0F));
-        root.addOrReplaceChild("body",
-                CubeListBuilder.create().texOffs(16, 16).addBox(-4.0F, 0.0F, -2.0F, 8.0F, 12.0F, 4.0F),
-                PartPose.offset(0.0F, 0.0F, 0.0F));
-        root.addOrReplaceChild("right_arm",
-                CubeListBuilder.create().texOffs(40, 16).addBox(-3.0F, -2.0F, -2.0F, 4.0F, 12.0F, 4.0F),
-                PartPose.offset(-5.0F, 2.0F, 0.0F));
-        root.addOrReplaceChild("left_arm",
-                CubeListBuilder.create().texOffs(40, 16).mirror().addBox(-1.0F, -2.0F, -2.0F, 4.0F, 12.0F, 4.0F),
-                PartPose.offset(5.0F, 2.0F, 0.0F));
-        root.addOrReplaceChild("right_leg",
-                CubeListBuilder.create().texOffs(0, 16).addBox(-2.0F, 0.0F, -2.0F, 4.0F, 12.0F, 4.0F),
-                PartPose.offset(-1.9F, 12.0F, 0.0F));
-        root.addOrReplaceChild("left_leg",
-                CubeListBuilder.create().texOffs(0, 16).mirror().addBox(-2.0F, 0.0F, -2.0F, 4.0F, 12.0F, 4.0F),
-                PartPose.offset(1.9F, 12.0F, 0.0F));
-
-        return LayerDefinition.create(mesh, 64, 64);
+        return LayerDefinition.create(HumanoidModel.createMesh(CubeDeformation.NONE, 0.0F), 64, 64);
     }
 
     @Override
     public void setupAnim(VerteEntity entity, float limbSwing, float limbSwingAmount, float ageInTicks, float netHeadYaw, float headPitch) {
-        this.head.yRot = netHeadYaw * ((float) Math.PI / 180F);
-        this.head.xRot = headPitch * ((float) Math.PI / 180F);
-
-        float swing = Mth.cos(limbSwing * 0.6662F) * 1.4F * limbSwingAmount;
-        this.rightArm.xRot = -swing;
-        this.leftArm.xRot = swing;
-        this.rightLeg.xRot = swing;
-        this.leftLeg.xRot = -swing;
-
-        float idle = Mth.cos(ageInTicks * 0.09F) * 0.05F;
-        this.rightArm.zRot = idle + 0.05F;
-        this.leftArm.zRot = -idle - 0.05F;
-
-        // Friendly wave: raise the right arm and swing it side to side.
+        super.setupAnim(entity, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch);
+        // Friendly wave from the emerge animation.
         if (entity.isWaving()) {
             this.rightArm.xRot = -2.1F;
             this.rightArm.yRot = 0.0F;
             this.rightArm.zRot = -0.5F + Mth.cos(ageInTicks * 0.6F) * 0.45F;
         }
-    }
-
-    @Override
-    public void renderToBuffer(PoseStack poseStack, VertexConsumer buffer, int packedLight, int packedOverlay, float red, float green, float blue, float alpha) {
-        // Render with the texture's true colors (so the Steve skin looks normal).
-        this.root.render(poseStack, buffer, packedLight, packedOverlay, red, green, blue, alpha);
     }
 }
