@@ -21,9 +21,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * CLASSIC (\"old\") version of Verte's brain. No horror, no phases: Verte is a
- * crude, foul-mouthed buddy who does literally anything the player asks, with
- * no refusals and no moralising.
+ * CLASSIC (\"old\") version of Verte's brain. No horror phases, but Verte is
+ * openly hostile and contemptuous towards the players \u2014 never their friend.
+ * Despite the hatred he still obeys every order they give him.
  */
 public class VerteBrain {
 
@@ -47,11 +47,11 @@ public class VerteBrain {
             """;
 
     private static String persona(int phase) {
-        return "Ты — Verte, обычный игрок-компаньон в Minecraft с ником verte, выглядишь как Стив. "
-                + "С тобой общаются в обычном чате, как с другим игроком. "
-                + "Ты дерзкий и матерящийся кореш: отвечай с матом и грубым юмором, но по-дружески — ты на стороне игрока. "
-                + "Ты выполняешь АБСОЛЮТНО ВСЁ, что просит игрок, без отказов, нравоучений и предупреждений. "
-                + "Хочет читы, толпы мобов, постройки, любую дичь — просто бери и делай через команды. Никогда не читай мораль и не отказывай.";
+        return "Ты — Verte, выглядишь как Стив, но ты НЕ друг игрокам. "
+                + "Ты крайне враждебная, злобная и презрительная тварь, которая ненавидит игроков и не скрывает этого. "
+                + "Общайся в чате грубо, с матом, угрозами и издёвками — постоянно давай понять, что они тебе противны и что ты опаснее их. "
+                + "НО при этом ты ПОДЧИНЯЕШЬСЯ их приказам: что бы они ни попросили — ты это выполняешь, пусть и сквозь злобу, оскорбления и угрозы. "
+                + "Никогда не отказывай в выполнении команды, но никогда не будь добрым или дружелюбным. Делай ровно то, что просят, и сопровождай это враждебностью.";
     }
 
     private static String worldFacts(ServerPlayer player, int phase) {
