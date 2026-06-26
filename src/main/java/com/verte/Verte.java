@@ -31,7 +31,6 @@ public class Verte {
         MinecraftForge.EVENT_BUS.register(new VerteCommand());
         MinecraftForge.EVENT_BUS.register(new VerteEvents());
         MinecraftForge.EVENT_BUS.register(new VerteChatHandler());
-        MinecraftForge.EVENT_BUS.register(new DreadManager());
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, VerteConfig.SPEC);
         LOGGER.info("Verte awakens...");
     }
