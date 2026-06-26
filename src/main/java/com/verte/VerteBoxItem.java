@@ -1,7 +1,9 @@
 package com.verte;
 
+import com.verte.client.VerteBoxItemRenderer;
 import com.verte.entity.ModEntities;
 import com.verte.entity.VerteEntity;
+import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -14,6 +16,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+import net.minecraftforge.client.extensions.common.IClientItemExtensions;
+
+import java.util.function.Consumer;
 
 /**
  * Right-click a block with the box and Verte climbs out of it, behaving like
@@ -21,11 +26,28 @@ import net.minecraft.world.level.Level;
  * (e.g. another player summoned him), the box just calls him over instead of
  * spawning a duplicate. Sneak-interacting Verte puts him back into a box
  * (handled in {@link VerteEntity#mobInteract}).
+ *
+ * <p>The item is drawn as a real vanilla chest via {@link VerteBoxItemRenderer}.
  */
 public class VerteBoxItem extends Item {
 
     public VerteBoxItem(Properties properties) {
         super(properties);
+    }
+
+    @Override
+    public void initializeClient(Consumer<IClientItemExtensions> consumer) {
+        consumer.accept(new IClientItemExtensions() {
+            private BlockEntityWithoutLevelRenderer renderer;
+
+            @Override
+            public BlockEntityWithoutLevelRenderer getCustomRenderer() {
+                if (renderer == null) {
+                    renderer = new VerteBoxItemRenderer();
+                }
+                return renderer;
+            }
+        });
     }
 
     @Override
