@@ -1,15 +1,13 @@
 package com.verte;
 
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.player.Player;
 
 /**
- * Hidden "corruption" stat (0-100) persisted per-player in the player's NBT.
- * Maps corruption to one of four behaviour phases:
- *   0  (0-24)  Friendly helper
- *   1  (25-49) Strange / intrusive
- *   2  (50-74) Hostile
- *   3  (75-100) Monster
+ * CLASSIC (\"old\") version of the mod: there is no horror arc. Verte never
+ * becomes strange, hostile or a monster \u2014 he stays a normal Steve-looking
+ * companion who simply does whatever you ask. To guarantee that, corruption is
+ * hard-wired to 0, which keeps every phase-gated system (DreadManager, story
+ * escalation, the monster transformation) permanently in the friendly phase.
  */
 public class CorruptionManager {
 
@@ -24,22 +22,19 @@ public class CorruptionManager {
     private CorruptionManager() {
     }
 
+    /** Always 0 in the classic version \u2014 Verte never escalates. */
     public static int get(Player player) {
-        CompoundTag persisted = player.getPersistentData().getCompound(Player.PERSISTED_NBT_TAG);
-        return clamp(persisted.getInt(KEY));
+        return 0;
     }
 
+    /** No-op in the classic version. */
     public static void set(Player player, int value) {
-        CompoundTag root = player.getPersistentData();
-        CompoundTag persisted = root.getCompound(Player.PERSISTED_NBT_TAG);
-        persisted.putInt(KEY, clamp(value));
-        root.put(Player.PERSISTED_NBT_TAG, persisted);
+        // intentionally does nothing: the classic Verte cannot be corrupted
     }
 
+    /** No-op in the classic version; always reports 0. */
     public static int add(Player player, int delta) {
-        int value = clamp(get(player) + delta);
-        set(player, value);
-        return value;
+        return 0;
     }
 
     public static int clamp(int value) {

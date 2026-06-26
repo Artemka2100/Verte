@@ -1,6 +1,5 @@
 package com.verte;
 
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.ServerChatEvent;
@@ -8,9 +7,9 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 /**
  * Lets the player talk to Verte by typing in normal chat, e.g.
- * "verte давай дружить" or "verte сруби дерево" — no slash command and no GUI.
- * Also catches a plain "да"/"нет" answer when Verte has just asked whether the
- * player is home, so the player never needs a command to reply.
+ * "verte \u0441\u0434\u0435\u043b\u0430\u0439 \u043d\u043e\u0447\u044c" or "verte \u0441\u0440\u0443\u0431\u0438 \u0434\u0435\u0440\u0435\u0432\u043e" \u2014 no slash command and no GUI.
+ * Everything after the "verte" prefix is handed to the AI brain (or the entity's
+ * task handler). Visible to all players.
  */
 public class VerteChatHandler {
 
@@ -31,27 +30,6 @@ public class VerteChatHandler {
             return;
         }
 
-        // Answering Verte's "ты сейчас дома?" question (plain yes/no, no prefix needed).
-        if (HomeManager.isPending(player)) {
-            if (isNo(lower)) {
-                server.execute(() -> {
-                    HomeManager.setPending(player, false);
-                    server.getPlayerList().broadcastSystemMessage(
-                            Component.literal("<verte> жаль. я всё равно найду."), false);
-                });
-                return;
-            }
-            if (isYes(lower)) {
-                server.execute(() -> {
-                    HomeManager.setHome(player, player.blockPosition());
-                    HomeManager.setPending(player, false);
-                    server.getPlayerList().broadcastSystemMessage(
-                            Component.literal("<verte> хорошо. теперь я знаю, где ты живёшь."), false);
-                });
-                return;
-            }
-        }
-
         if (!lower.startsWith("verte")) {
             return;
         }
@@ -65,15 +43,5 @@ public class VerteChatHandler {
 
         final String message = rest;
         server.execute(() -> VerteInteraction.handle(player, message));
-    }
-
-    private static boolean isYes(String s) {
-        return s.startsWith("да") || s.contains(" да") || s.contains("ага")
-                || s.contains("конечно") || s.contains("yes") || s.contains("yeah");
-    }
-
-    private static boolean isNo(String s) {
-        return s.startsWith("нет") || s.contains("нет") || s.contains("не ")
-                || s.contains("неа") || s.equals("no") || s.startsWith("no ");
     }
 }
