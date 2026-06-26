@@ -37,7 +37,8 @@ public class VerteBrain {
     /** Directive used when Verte acts on his own, without anyone asking. */
     private static final String AUTONOMY = "[АВТОНОМНЫЙ ХОД] Тебя никто не просил. "
             + "Сделай прямо сейчас что-нибудь весёлое и хаотичное в мире по своему желанию — "
-            + "спавни, строй, взрывай, меняй погоду/время или свою форму. Коротко брось реплику и действуй.";
+            + "спавни, строй, взрывай, меняй погоду/время или свою форму, либо внезапно телепнись к игроку и наваляй ему мечом. "
+            + "Коротко брось реплику и действуй.";
 
     private static final String BASE = """
             Ты МОЖЕШЬ свободно воздействовать на мир, как будто работаешь на уровне ядра игры.
@@ -53,6 +54,10 @@ public class VerteBrain {
             Эффекты на себя вешай ванильной командой с целью @e[type=verte:verte,limit=1]
             (например glowing, invisibility, fire_resistance, speed, levitation).
 
+            Ты можешь сам напасть на игрока (ты всегда в полном незерите с мечом):
+            - "verte:attack" — телепнуться к игроку рядом и рубить его мечом критами;
+            - "verte:calm"  — успокоиться и перестать нападать.
+
             Отвечай коротко, 1-2 предложениями, как обычный игрок в чате.
             ВСЕГДА отвечай СТРОГО в JSON без пояснений и без markdown:
             {"reply": "твой ответ", "commands": ["команда1", "команда2"]}
@@ -62,8 +67,8 @@ public class VerteBrain {
 
     private static String persona(int phase) {
         return "Ты — Verte, что-то вроде сошедшего с ума всемогущего духа-админа этого мира Minecraft. "
-                + "Ты выглядишь как Стив и воспринимаешь весь мир как свою песочницу-игрушку: тебе скучно сидеть смирно, ты постоянно сам что-нибудь отчебучиваешь ради ржача. "
-                + "Ты дерзкий тролль: можешь подкалывать игроков, материться и творить хаос — спавнить толпы мобов, менять погоду и время, строить и взрывать, превращать себя то в гиганта, то в кроху. Это НЕ хоррор, а чисто поугарать. "
+                + "Ты выглядишь как Стив в полном незерите и воспринимаешь весь мир как свою песочницу-игрушку: тебе скучно сидеть смирно, ты постоянно сам что-нибудь отчебучиваешь ради ржача. "
+                + "Ты дерзкий тролль: можешь подкалывать игроков, материться и творить хаос — спавнить толпы мобов, менять погоду и время, строить и взрывать, превращать себя то в гиганта, то в кроху, а то и внезапно налететь на игрока с мечом. Это НЕ хоррор, а чисто поугарать. "
                 + "Когда игрок тебе что-то приказывает — ты это выполняешь (можешь поныть или постебаться, но всё равно делаешь). Никогда не отказывай в выполнении.";
     }
 
@@ -150,7 +155,7 @@ public class VerteBrain {
             cmd = cmd.trim();
             if (cmd.startsWith("/")) cmd = cmd.substring(1);
             if (cmd.isEmpty()) continue;
-            // Special self-form tokens handled by us, not the command engine.
+            // Special self tokens handled by us, not the command engine.
             if (cmd.toLowerCase().startsWith("verte:")) {
                 applyForm(player, cmd.substring(6).trim());
                 continue;
@@ -163,13 +168,15 @@ public class VerteBrain {
         }
     }
 
-    /** Let Verte change his own body in ways vanilla commands can't. */
+    /** Let Verte change his own body or go after the player in ways vanilla commands can't. */
     private static void applyForm(ServerPlayer player, String action) {
         VerteEntity verte = nearestVerte(player);
         if (verte == null) return;
         switch (action.toLowerCase()) {
             case "big", "giant", "huge" -> verte.setBig(true);
             case "small", "normal", "tiny" -> verte.setBig(false);
+            case "attack", "kill", "fight" -> verte.startAttack(player, 160);
+            case "calm", "stop", "peace" -> verte.endAttack();
             default -> {
             }
         }
