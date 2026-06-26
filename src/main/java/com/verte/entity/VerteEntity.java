@@ -21,6 +21,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.Pose;
@@ -28,20 +29,21 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.UUID;
 
 /**
- * CLASSIC (\"поугарать\") version of Verte. No horror at all: no stalking,
- * peeking, chasing, rampage, atmosphere or scripted creepy lines. Instead Verte
- * is an autonomous sandbox entity \u2014 he periodically acts on his own through the
- * AI brain (spawning, building, changing weather/time/his own form, whatever he
- * feels like) and still obeys direct orders from players. He looks like a normal
- * Steve and never escalates.
+ * CLASSIC (\"поугарать\") version of Verte. No horror. He is on his own: he does
+ * NOT follow players around \u2014 he wanders, does whatever he feels like through the
+ * AI brain, and once in a while teleports straight to a player and starts
+ * crit-hitting them with a sword while wearing full netherite. He still obeys
+ * direct orders typed in chat.
  */
 public class VerteEntity extends PathfinderMob {
 
@@ -68,6 +70,11 @@ public class VerteEntity extends PathfinderMob {
     private int waveUntil = -1;
     private int sayingUntil = -1;
     private int nextActAt = -1;
+    private boolean geared;
+    private int aggroUntil = -1;
+    private UUID targetUUID;
+    private int swingCd;
+    private int tpCooldown;
     private UUID ownerUUID;
 
     public VerteEntity(EntityType<? extends PathfinderMob> type, Level level) {
@@ -82,6 +89,7 @@ public class VerteEntity extends PathfinderMob {
         return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0D)
                 .add(Attributes.MOVEMENT_SPEED, 0.30D)
+                .add(Attributes.ATTACK_DAMAGE, 8.0D)
                 .add(Attributes.FOLLOW_RANGE, 256.0D);
     }
 
@@ -95,7 +103,8 @@ public class VerteEntity extends PathfinderMob {
 
     @Override
     protected void registerGoals() {
-        this.goalSelector.addGoal(1, new FollowPlayerGoal(this, 1.15D, 2.5F, 6.0F));
+        // He is on his own \u2014 he strolls around, he does not follow players.
+        this.goalSelector.addGoal(1, new WaterAvoidingRandomStrollGoal(this, 1.0D));
         this.goalSelector.addGoal(2, new LookAtPlayerGoal(this, Player.class, 16.0F));
         this.goalSelector.addGoal(3, new RandomLookAroundGoal(this));
     }
@@ -123,9 +132,9 @@ public class VerteEntity extends PathfinderMob {
         this.ownerUUID = uuid;
     }
 
-    /** True while Verte is doing his own thing, so the follow goal should step aside. */
+    /** True while Verte is busy doing his own thing, so passive goals step aside. */
     public boolean isBusy() {
-        return this.task != TASK_NONE;
+        return this.task != TASK_NONE || this.aggroUntil > 0;
     }
 
     public void startEmerge() {
@@ -197,6 +206,12 @@ public class VerteEntity extends PathfinderMob {
             return;
         }
 
+        // Always kitted out in full netherite with a sword in hand.
+        if (!this.geared) {
+            this.equipNetherite();
+            this.geared = true;
+        }
+
         // Revert the floating speech back to his name after a few seconds.
         if (this.sayingUntil > 0 && this.tickCount >= this.sayingUntil) {
             this.setCustomName(Component.literal("verte"));
@@ -220,25 +235,122 @@ public class VerteEntity extends PathfinderMob {
         // Tasks run every tick for smooth movement.
         this.tickTask(level);
 
+        // Combat runs every tick while he is on the warpath.
+        if (this.aggroUntil > 0) {
+            this.tickCombat(level);
+            return;
+        }
+
         if (this.tickCount % 20 != 0) {
             return;
         }
 
         Player owner = this.findOwner(level);
 
-        if (this.task == TASK_NONE && owner instanceof ServerPlayer sp) {
-            this.followOwner(sp);
-        }
-
-        // Autonomy: every ~30-60s Verte does whatever he feels like via the AI brain.
+        // Autonomy: every ~30-60s he either does something chaotic via the brain
+        // or decides to teleport in and beat a player up. He never just follows.
         if (this.nextActAt < 0) {
             this.nextActAt = this.tickCount + 300 + this.random.nextInt(300);
         }
         if (this.tickCount >= this.nextActAt) {
             this.nextActAt = this.tickCount + 600 + this.random.nextInt(600);
             if (this.task == TASK_NONE && owner instanceof ServerPlayer sp) {
-                VerteBrain.act(sp);
+                if (this.random.nextInt(3) == 0) {
+                    this.startAttack(sp, 140 + this.random.nextInt(120));
+                } else {
+                    VerteBrain.act(sp);
+                }
             }
+        }
+    }
+
+    // ---- Combat: teleport in and crit with a netherite sword ----
+
+    public void startAttack(Player target, int durationTicks) {
+        if (target == null) {
+            return;
+        }
+        this.clearTask();
+        if (!this.geared) {
+            this.equipNetherite();
+            this.geared = true;
+        }
+        this.targetUUID = target.getUUID();
+        this.aggroUntil = this.tickCount + durationTicks;
+        this.swingCd = 0;
+        this.tpCooldown = 0;
+        if (this.level() instanceof ServerLevel sl) {
+            this.teleportToTarget(sl, target);
+        }
+    }
+
+    public void endAttack() {
+        this.aggroUntil = -1;
+        this.targetUUID = null;
+        this.getNavigation().stop();
+    }
+
+    private void tickCombat(ServerLevel level) {
+        if (this.tickCount >= this.aggroUntil) {
+            this.endAttack();
+            return;
+        }
+        Player target = (this.targetUUID != null) ? level.getPlayerByUUID(this.targetUUID) : null;
+        if (target == null || !target.isAlive() || target.isCreative() || target.isSpectator()) {
+            this.endAttack();
+            return;
+        }
+        this.getLookControl().setLookAt(target, 30.0F, 30.0F);
+        double d2 = this.distanceToSqr(target);
+        if (d2 > 256.0D && this.tpCooldown <= 0) {
+            this.teleportToTarget(level, target);
+            this.tpCooldown = 30;
+        } else if (d2 > 4.0D) {
+            this.getNavigation().moveTo(target, 1.8D);
+        } else {
+            this.getNavigation().stop();
+        }
+        if (this.tpCooldown > 0) {
+            this.tpCooldown--;
+        }
+        if (this.swingCd > 0) {
+            this.swingCd--;
+        }
+        if (d2 < 6.25D && this.swingCd <= 0) {
+            this.critHit(level, target);
+            this.swingCd = 12;
+        }
+    }
+
+    private void critHit(ServerLevel level, Player target) {
+        this.swing(InteractionHand.MAIN_HAND);
+        float dmg = (float) this.getAttributeValue(Attributes.ATTACK_DAMAGE) * 1.5F;
+        boolean hit = target.hurt(this.damageSources().mobAttack(this), dmg);
+        if (hit) {
+            level.sendParticles(ParticleTypes.CRIT, target.getX(), target.getY() + 1.0D, target.getZ(),
+                    14, 0.3D, 0.5D, 0.3D, 0.25D);
+            level.playSound(null, target.blockPosition(), SoundEvents.PLAYER_ATTACK_CRIT, SoundSource.PLAYERS, 1.0F, 1.0F);
+        }
+    }
+
+    private void teleportToTarget(ServerLevel level, Player target) {
+        this.poof(level, this.position());
+        Vec3 dir = target.getViewVector(1.0F).normalize();
+        double x = target.getX() + dir.x * 1.5D;
+        double z = target.getZ() + dir.z * 1.5D;
+        this.teleportTo(x, target.getY(), z);
+        this.getNavigation().stop();
+        this.poof(level, this.position());
+    }
+
+    private void equipNetherite() {
+        this.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.NETHERITE_SWORD));
+        this.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.NETHERITE_HELMET));
+        this.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.NETHERITE_CHESTPLATE));
+        this.setItemSlot(EquipmentSlot.LEGS, new ItemStack(Items.NETHERITE_LEGGINGS));
+        this.setItemSlot(EquipmentSlot.FEET, new ItemStack(Items.NETHERITE_BOOTS));
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            this.setDropChance(slot, 0.0F);
         }
     }
 
@@ -249,6 +361,7 @@ public class VerteEntity extends PathfinderMob {
 
         if (containsAny(m, "\u0441\u0442\u043e\u043f", "\u0441\u0442\u043e\u0439", "\u0445\u0432\u0430\u0442\u0438\u0442", "\u043e\u0442\u043c\u0435\u043d", "stop")) {
             this.clearTask();
+            this.endAttack();
             this.speakAsPlayer("\u043b\u0430\u0434\u043d\u043e, \u0441\u0442\u043e\u044e.");
             return true;
         }
@@ -392,16 +505,6 @@ public class VerteEntity extends PathfinderMob {
             }
         }
         return best;
-    }
-
-    private void followOwner(ServerPlayer sp) {
-        if (this.distanceToSqr(sp) > 28.0D * 28.0D) {
-            Vec3 dir = sp.getViewVector(1.0F).normalize();
-            double x = sp.getX() - dir.x * 6.0D;
-            double z = sp.getZ() - dir.z * 6.0D;
-            this.teleportTo(x, sp.getY(), z);
-            this.getNavigation().stop();
-        }
     }
 
     private void poof(ServerLevel level, Vec3 pos) {
