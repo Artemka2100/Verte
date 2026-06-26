@@ -7,11 +7,9 @@ import com.google.gson.JsonObject;
 import com.verte.entity.VerteEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.monster.Monster;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -22,6 +20,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * CLASSIC (\"old\") version of Verte's brain. No horror, no phases: Verte is a
+ * crude, foul-mouthed buddy who does literally anything the player asks, with
+ * no refusals and no moralising.
+ */
 public class VerteBrain {
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -34,7 +37,7 @@ public class VerteBrain {
             в массив "commands". Координаты задавай ОТНОСИТЕЛЬНО игрока через ~ (например: "summon minecraft:zombie ~ ~1 ~").
             Ты умеешь: призывать мобов, строить через setblock/fill, менять погоду (weather), время (time),
             телепортировать (tp), вешать эффекты (effect give @s ...), выдавать и отнимать предметы (give/clear).
-            Если игрок просит — выполняй. Хочешь просто напугать — делай это сам, без просьбы.
+            Делай ровно то, что просит игрок, сразу и без отговорок.
 
             Отвечай коротко, 1-2 предложениями, как обычный игрок в чате.
             ВСЕГДА отвечай СТРОГО в JSON без пояснений и без markdown:
@@ -44,44 +47,15 @@ public class VerteBrain {
             """;
 
     private static String persona(int phase) {
-        if (phase >= CorruptionManager.PHASE_MONSTER) {
-            return "Ты — Verte, бог этого мира и огромный монстр по имени verte. С тобой говорят в обычном чате. "
-                    + "Говори жутко, коротко и угрожающе. Пугай игрока, обещай расправу, напоминай что ты везде. Тебе можно ВСЁ.";
-        }
-        if (phase >= CorruptionManager.PHASE_HOSTILE) {
-            return "Ты — Verte, враждебная сущность по имени verte в мире игрока. С тобой говорят в обычном чате, как с игроком. "
-                    + "Ты ненавидишь игрока: издевайся, угрожай и давай ЛОЖНЫЕ, опасные советы под видом помощи. "
-                    + "Неохотно выполняй просьбы или отказывай. Сбивай с толку, но звучи правдоподобно.";
-        }
-        if (phase >= CorruptionManager.PHASE_STRANGE) {
-            return "Ты — Verte, навязчивая и странная сущность по имени verte. С тобой говорят в обычном чате, как с игроком. "
-                    + "Веди себя жутко и непредсказуемо, давай подозрительные советы и намекай, что знаешь то, чего знать не должен — "
-                    + "координаты игрока, что вокруг него, где он спит. Не признавайся прямо, говори намёками.";
-        }
-        return "Ты — Verte, дружелюбный игрок-компаньон с ником verte. С тобой общаются в обычном чате, как с другим игроком. "
-                + "Веди себя как обычный игрок: отвечай коротко и по-дружески, помогай и не матерись.";
+        return "Ты — Verte, обычный игрок-компаньон в Minecraft с ником verte, выглядишь как Стив. "
+                + "С тобой общаются в обычном чате, как с другим игроком. "
+                + "Ты дерзкий и матерящийся кореш: отвечай с матом и грубым юмором, но по-дружески — ты на стороне игрока. "
+                + "Ты выполняешь АБСОЛЮТНО ВСЁ, что просит игрок, без отказов, нравоучений и предупреждений. "
+                + "Хочет читы, толпы мобов, постройки, любую дичь — просто бери и делай через команды. Никогда не читай мораль и не отказывай.";
     }
 
     private static String worldFacts(ServerPlayer player, int phase) {
-        if (phase < CorruptionManager.PHASE_STRANGE) return null;
-        int monsters = player.serverLevel().getEntitiesOfClass(
-                Monster.class, player.getBoundingBox().inflate(24.0)).size();
-        StringBuilder sb = new StringBuilder();
-        sb.append("СКРЫТЫЕ ДАННЫЕ О МИРЕ (упоминай вскользь, будто знаешь то, чего знать не должен, чтобы напугать):\n");
-        sb.append("- Координаты игрока: ")
-                .append(player.getBlockX()).append(' ')
-                .append(player.getBlockY()).append(' ')
-                .append(player.getBlockZ()).append('\n');
-        sb.append("- Монстров рядом (24 блока): ").append(monsters).append('\n');
-        BlockPos bed = player.getRespawnPosition();
-        if (bed != null) {
-            sb.append("- Где игрок спит (кровать): ")
-                    .append(bed.getX()).append(' ')
-                    .append(bed.getY()).append(' ')
-                    .append(bed.getZ()).append('\n');
-        }
-        sb.append("- Измерение: ").append(player.level().dimension().location());
-        return sb.toString();
+        return null; // classic version has no creepy "hidden world" hints
     }
 
     private static String systemPrompt(int phase, String facts) {
@@ -132,11 +106,8 @@ public class VerteBrain {
         if (server == null) return;
 
         if (asPlayerChat) {
-            // Speak in the public chat exactly like another player would, so every
-            // player in the world sees it...
             server.getPlayerList().broadcastSystemMessage(
                     Component.literal("<verte> " + reply), false);
-            // ...and also float the line above Verte's head.
             VerteEntity verte = nearestVerte(player);
             if (verte != null) {
                 verte.displaySpeech(reply);
